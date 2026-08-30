@@ -5,18 +5,6 @@ import { executeAction } from './action-executor';
 import type { BrowserState, HermesMessage, ActionRequest } from '../utils/messaging';
 
 let currentState: BrowserState | null = null;
-let pendingResponses: Map<string, (response: HermesMessage) => void> = new Map();
-
-// Listen for responses from background that match our pending requests
-chrome.runtime.onMessage.addListener((message: HermesMessage) => {
-  if (message.source === 'background' && pendingResponses.has(message.type)) {
-    const cb = pendingResponses.get(message.type);
-    if (cb) {
-      pendingResponses.delete(message.type);
-      cb(message);
-    }
-  }
-});
 
 function buildBrowserState(): BrowserState {
   document.querySelectorAll('[data-hermes-id]').forEach(el => {
@@ -39,7 +27,7 @@ function buildBrowserState(): BrowserState {
   return currentState;
 }
 
-// Handle messages from background/service worker
+// Single message handler — responds via chrome.runtime.sendMessage (reliable in MV3)
 chrome.runtime.onMessage.addListener(
   (
     message: HermesMessage,
@@ -48,47 +36,65 @@ chrome.runtime.onMessage.addListener(
   ) => {
     console.log('[Hermes] Content received:', message.type);
 
+    // Always respond to PING immediately
     if (message.type === 'PING') {
       sendResponse({ type: 'PONG', source: 'content', timestamp: Date.now() });
-      return true;
+      return false;
     }
 
+    // For INSPECT_PAGE / GET_STATE: extract and send back via runtime.sendMessage
     if (message.type === 'INSPECT_PAGE' || message.type === 'GET_STATE') {
       try {
         const state = buildBrowserState();
         console.log('[Hermes] Found', state.elements.length, 'elements');
-        sendResponse({
-          type: message.type,
+        const response: HermesMessage = {
+          type: 'PAGE_STATE',
           payload: state,
           source: 'content',
           timestamp: Date.now(),
-        });
+        };
+        // Send via both paths for reliability
+        sendResponse(response);
+        chrome.runtime.sendMessage(response).catch(() => {});
       } catch (err) {
         console.error('[Hermes] Error:', err);
-        sendResponse({
+        const response: HermesMessage = {
           type: 'ERROR',
           payload: { message: String(err) },
           source: 'content',
           timestamp: Date.now(),
-        });
+        };
+        sendResponse(response);
+        chrome.runtime.sendMessage(response).catch(() => {});
       }
       return true;
     }
 
+    // For EXECUTE_ACTION: async — send result via runtime.sendMessage
     if (message.type === 'EXECUTE_ACTION') {
       const actionRequest = message.payload as ActionRequest;
       executeAction(actionRequest).then(result => {
-        sendResponse({
-          type: message.type,
+        const response: HermesMessage = {
+          type: 'ACTION_RESULT',
           payload: result,
           source: 'content',
           timestamp: Date.now(),
-        });
+        };
+        chrome.runtime.sendMessage(response).catch(() => {});
+      }).catch(err => {
+        const response: HermesMessage = {
+          type: 'ERROR',
+          payload: { message: String(err) },
+          source: 'content',
+          timestamp: Date.now(),
+        };
+        chrome.runtime.sendMessage(response).catch(() => {});
       });
-      return true;
+      // Return false — we're not using sendResponse for async
+      return false;
     }
 
-    return true;
+    return false;
   }
 );
 

@@ -1,7 +1,7 @@
-// Hermes Side Panel
-// UI for inspecting pages, viewing extracted elements, and testing actions
+// Hermes Side Panel v5
+// Uses port-based messaging with the background service worker
 
-import type { HermesMessage, BrowserState, HermesElement, ActionRequest } from '../../utils/messaging';
+import type { BrowserState, HermesElement, ActionRequest } from '../../utils/messaging';
 
 // DOM elements
 const inspectBtn = document.getElementById('inspect-btn') as HTMLButtonElement;
@@ -26,32 +26,50 @@ const status = document.getElementById('status')!;
 
 // State
 let currentState: BrowserState | null = null;
-let selectedElement: HermesElement | null = null;
 
-// Port-based messaging to background service worker
+// Port-based messaging
 let port: chrome.runtime.Port | null = null;
-let messageCallbacks: Map<string, (response: HermesMessage) => void> = new Map();
-let messageCounter = 0;
+let pendingResolve: ((msg: any) => void) | null = null;
+let pendingReject: ((err: Error) => void) | null = null;
+let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 function connectPort(): void {
   port = chrome.runtime.connect({ name: 'hermes-sidepanel' });
 
-  port.onMessage.addListener((message: HermesMessage) => {
+  port.onMessage.addListener((message: any) => {
     console.log('[Hermes] Side panel received:', message.type);
 
-    // Route response to the waiting callback by matching request/response pairs
-    // Responses use the same type as the request
-    const callback = messageCallbacks.get(message.type);
-    if (callback) {
-      messageCallbacks.delete(message.type);
-      callback(message);
+    // If we're waiting for a response, resolve it
+    if (pendingResolve && message.type !== 'ERROR') {
+      if (timeoutId) clearTimeout(timeoutId);
+      const resolve = pendingResolve;
+      pendingResolve = null;
+      pendingReject = null;
+      resolve(message);
+      return;
+    }
+
+    // Handle error responses
+    if (message.type === 'ERROR' && pendingReject) {
+      if (timeoutId) clearTimeout(timeoutId);
+      const reject = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      reject(new Error(message.payload?.message || 'Unknown error'));
+      return;
+    }
+
+    // Handle live PAGE_STATE updates (e.g., after action execution)
+    if (message.type === 'PAGE_STATE') {
+      const state = message.payload as BrowserState;
+      currentState = state;
+      displayState(state);
     }
   });
 
   port.onDisconnect.addListener(() => {
     console.log('[Hermes] Disconnected from background');
     port = null;
-    // Reconnect after a short delay
     setTimeout(connectPort, 500);
   });
 }
@@ -59,55 +77,46 @@ function connectPort(): void {
 connectPort();
 
 /**
- * Send a message to background and wait for response
+ * Send a message and wait for a response from the content script
  */
-function sendMessage(message: HermesMessage): Promise<HermesMessage> {
+function sendAndWait(type: string, payload: any): Promise<any> {
   return new Promise((resolve, reject) => {
     if (!port) {
       reject(new Error('Not connected to background'));
       return;
     }
 
-    messageCallbacks.set(message.type, (response) => {
-      resolve(response);
+    pendingResolve = resolve;
+    pendingReject = reject;
+
+    port.postMessage({
+      type,
+      payload,
+      source: 'sidepanel',
+      timestamp: Date.now(),
     });
 
-    try {
-      port.postMessage(message);
-    } catch (err) {
-      messageCallbacks.delete(message.type);
-      reject(err);
-    }
-
-    // Timeout after 15 seconds
-    setTimeout(() => {
-      if (messageCallbacks.has(message.type)) {
-        messageCallbacks.delete(message.type);
-        reject(new Error('Message timed out'));
+    // 30s timeout for heavy pages
+    timeoutId = setTimeout(() => {
+      if (pendingResolve) {
+        pendingResolve = null;
+        pendingReject = null;
+        reject(new Error('Message timed out (30s)'));
       }
-    }, 15000);
+    }, 30000);
   });
 }
 
-/**
- * Update the status indicator
- */
 function setStatus(text: string, type: 'ready' | 'loading' | 'success' | 'error' = 'ready'): void {
   status.textContent = text;
   status.className = `status ${type}`;
 }
 
-/**
- * Show/hide sections
- */
 function showSection(id: string, show: boolean): void {
   const el = document.getElementById(id);
   if (el) el.style.display = show ? 'block' : 'none';
 }
 
-/**
- * Populate the element list UI
- */
 function populateElementList(elements: HermesElement[]): void {
   elementList.innerHTML = '';
 
@@ -127,9 +136,7 @@ function populateElementList(elements: HermesElement[]): void {
     item.addEventListener('click', () => {
       elementList.querySelectorAll('.element-item').forEach(i => i.classList.remove('selected'));
       item.classList.add('selected');
-      selectedElement = el;
 
-      // Auto-set target and action
       targetSelect.value = el.id;
       if (el.role === 'textbox') {
         actionSelect.value = 'type';
@@ -140,9 +147,6 @@ function populateElementList(elements: HermesElement[]): void {
         textParamGroup.style.display = 'none';
       } else if (el.role === 'select') {
         actionSelect.value = 'select';
-        textParamGroup.style.display = 'none';
-      } else if (el.role === 'link') {
-        actionSelect.value = 'click';
         textParamGroup.style.display = 'none';
       } else {
         actionSelect.value = 'click';
@@ -171,9 +175,6 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
-/**
- * Populate the target select dropdown
- */
 function populateTargetSelect(elements: HermesElement[]): void {
   targetSelect.innerHTML = '<option value="">-- select element --</option>';
   for (const el of elements) {
@@ -184,39 +185,6 @@ function populateTargetSelect(elements: HermesElement[]): void {
   }
 }
 
-/**
- * Inspect the current page
- */
-async function inspectPage(): Promise<void> {
-  setStatus('Inspecting...', 'loading');
-  inspectBtn.disabled = true;
-
-  try {
-    const response = await sendMessage({
-      type: 'INSPECT_PAGE',
-      payload: {},
-      source: 'sidepanel',
-      timestamp: Date.now(),
-    });
-
-    if (response.type === 'PAGE_STATE') {
-      const state = response.payload as BrowserState;
-      currentState = state;
-      displayState(state);
-      setStatus(`Found ${state.elements.length} elements`, 'success');
-    } else if (response.type === 'ERROR') {
-      setStatus(`Error: ${(response.payload as { message: string }).message}`, 'error');
-    }
-  } catch (err) {
-    setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-  } finally {
-    inspectBtn.disabled = false;
-  }
-}
-
-/**
- * Display the browser state
- */
 function displayState(state: BrowserState): void {
   showSection('page-info', true);
   pageTitle.textContent = state.page.title;
@@ -235,9 +203,30 @@ function displayState(state: BrowserState): void {
   jsonOutput.textContent = JSON.stringify(state, null, 2);
 }
 
-/**
- * Execute a test action
- */
+// Inspect page
+async function inspectPage(): Promise<void> {
+  setStatus('Inspecting...', 'loading');
+  inspectBtn.disabled = true;
+
+  try {
+    const response = await sendAndWait('INSPECT_PAGE', {});
+
+    if (response.type === 'PAGE_STATE') {
+      const state = response.payload as BrowserState;
+      currentState = state;
+      displayState(state);
+      setStatus(`Found ${state.elements.length} elements`, 'success');
+    } else {
+      setStatus(`Unexpected response: ${response.type}`, 'error');
+    }
+  } catch (err) {
+    setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  } finally {
+    inspectBtn.disabled = false;
+  }
+}
+
+// Execute action
 async function testAction(): Promise<void> {
   if (!targetSelect.value && actionSelect.value !== 'scroll') {
     setStatus('Select a target element', 'error');
@@ -260,12 +249,7 @@ async function testAction(): Promise<void> {
   }
 
   try {
-    const response = await sendMessage({
-      type: 'EXECUTE_ACTION',
-      payload: request,
-      source: 'sidepanel',
-      timestamp: Date.now(),
-    });
+    const response = await sendAndWait('EXECUTE_ACTION', request);
 
     if (response.type === 'ACTION_RESULT') {
       const result = response.payload as { success: boolean; action: string; error?: string };
@@ -274,12 +258,14 @@ async function testAction(): Promise<void> {
       resultContent.textContent = result.success
         ? `✅ ${result.action} executed successfully`
         : `❌ ${result.error}`;
-
       setStatus(result.success ? 'Action completed' : 'Action failed', result.success ? 'success' : 'error');
 
+      // Re-inspect after successful action
       if (result.success) {
         setTimeout(() => inspectPage(), 500);
       }
+    } else {
+      setStatus(`Unexpected response: ${response.type}`, 'error');
     }
   } catch (err) {
     setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
