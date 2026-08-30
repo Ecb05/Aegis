@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Agent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🛡️</span>
+        <span class="logo-text">Hermes</span>
+      </div>
+      <div class="status" id="status">Ready</div>
+    </header>
+
+    <section class="controls">
+      <button class="btn btn-primary" id="inspect-btn">
+        <span class="btn-icon">🔍</span>
+        Inspect Page
+      </button>
+      <button class="btn btn-secondary" id="action-test-btn" disabled>
+        <span class="btn-icon">⚡</span>
+        Test Action
+      </button>
+    </section>
+
+    <section class="page-info" id="page-info" style="display: none;">
+      <h3>Page Info</h3>
+      <div class="info-row">
+        <span class="info-label">Title:</span>
+        <span class="info-value" id="page-title">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">URL:</span>
+        <span class="info-value" id="page-url">-</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Elements:</span>
+        <span class="info-value" id="element-count">-</span>
+      </div>
+    </section>
+
+    <section class="elements-panel" id="elements-panel" style="display: none;">
+      <h3>Extracted Elements</h3>
+      <div class="element-list" id="element-list"></div>
+    </section>
+
+    <section class="action-panel" id="action-panel" style="display: none;">
+      <h3>Test Action</h3>
+      <div class="action-form">
+        <div class="form-group">
+          <label for="action-select">Action:</label>
+          <select id="action-select">
+            <option value="click">click</option>
+            <option value="type">type</option>
+            <option value="scroll">scroll</option>
+            <option value="hover">hover</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="target-select">Target:</label>
+          <select id="target-select"></select>
+        </div>
+        <div class="form-group" id="text-param-group" style="display: none;">
+          <label for="text-param">Text:</label>
+          <input type="text" id="text-param" placeholder="Enter text...">
+        </div>
+        <button class="btn btn-primary" id="execute-btn" disabled>
+          Execute
+        </button>
+      </div>
+    </section>
+
+    <section class="result-panel" id="result-panel" style="display: none;">
+      <h3>Action Result</h3>
+      <div class="result" id="result-content"></div>
+    </section>
+
+    <section class="json-panel" id="json-panel" style="display: none;">
+      <h3>Browser State (JSON)</h3>
+      <pre class="json-output" id="json-output"></pre>
+    </section>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

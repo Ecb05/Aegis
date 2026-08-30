@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Appointment — Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      margin-bottom: 32px;
+    }
+
+    .form-card {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+    }
+
+    .row {
+      display: flex;
+      gap: 16px;
+    }
+
+    .row .form-group {
+      flex: 1;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 12px 24px;
+      background: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-submit:hover {
+      background: #4f46e5;
+    }
+
+    .btn-submit:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    .confirmation {
+      display: none;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .confirmation.show {
+      display: block;
+    }
+
+    .confirmation h2 {
+      color: #22c55e;
+      margin-bottom: 12px;
+    }
+
+    .confirmation p {
+      color: #64748b;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📅 Book Appointment</h1>
+    <p class="subtitle">Demo page for Hermes browser agent testing</p>
+
+    <div class="form-card" id="booking-form">
+      <form id="appointmentForm" onsubmit="return handleSubmit(event)">
+        <div class="form-group">
+          <label for="patient-name">Patient Name</label>
+          <input type="text" id="patient-name" name="name" placeholder="Enter your full name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="phone">Phone Number</label>
+          <input type="tel" id="phone" name="phone" placeholder="+1 (555) 123-4567">
+        </div>
+
+        <div class="row">
+          <div class="form-group">
+            <label for="date">Date</label>
+            <input type="date" id="date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label for="time">Time</label>
+            <select id="time" name="time" required>
+              <option value="">Select time</option>
+              <option value="09:00">9:00 AM</option>
+              <option value="09:30">9:30 AM</option>
+              <option value="10:00">10:00 AM</option>
+              <option value="10:30">10:30 AM</option>
+              <option value="11:00">11:00 AM</option>
+              <option value="11:30">11:30 AM</option>
+              <option value="13:00">1:00 PM</option>
+              <option value="13:30">1:30 PM</option>
+              <option value="14:00">2:00 PM</option>
+              <option value="14:30">2:30 PM</option>
+              <option value="15:00">3:00 PM</option>
+              <option value="15:30">3:30 PM</option>
+              <option value="16:00">4:00 PM</option>
+              <option value="16:30">4:30 PM</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="department">Department</label>
+          <select id="department" name="department" required>
+            <option value="">Select department</option>
+            <option value="general">General Practice</option>
+            <option value="dermatology">Dermatology</option>
+            <option value="cardiology">Cardiology</option>
+            <option value="orthopedics">Orthopedics</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Additional Notes</label>
+          <textarea id="notes" name="notes" placeholder="Describe your symptoms or reason for visit..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submit-btn">
+          Book Appointment
+        </button>
+      </form>
+    </div>
+
+    <div class="confirmation" id="confirmation">
+      <h2>✅ Appointment Booked!</h2>
+      <p>Your appointment has been scheduled successfully.</p>
+      <p id="confirmation-details"></p>
+    </div>
+
+    <footer>
+      Demo for Hermes — SIH 2026 PS26171
+    </footer>
+  </div>
+
+  <script>
+    // Set default date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('date').value = tomorrow.toISOString().split('T')[0];
+
+    function handleSubmit(e) {
+      e.preventDefault();
+
+      const name = document.getElementById('patient-name').value;
+      const email = document.getElementById('email').value;
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      const dept = document.getElementById('department').value;
+
+      document.getElementById('booking-form').style.display = 'none';
+      document.getElementById('confirmation').classList.add('show');
+      document.getElementById('confirmation-details').textContent =
+        `${name} — ${date} at ${time} (${dept})`;
+
+      return false;
+    }
+  </script>
+</body>
+</html>

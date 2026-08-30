@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+build/
+*.crx
+*.xpi
+
+# Extension
+extension/*.pem
+extension/*.key
+
+# Models (large files)
+models/*.onnx
+models/*.bin
+models/*.pt
+models/*.weights
+models/*.json
+!models/README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Benchmark reports
+benchmark/reports/*.json
+benchmark/reports/*.html
+benchmark/reports/*.csv
+
+# Logs
+*.log
+logs/
+
+# TypeScript
+*.js.map
+*.d.ts.map

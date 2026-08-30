@@ -1,0 +1,17 @@
+{
+  "name": "hermes-extension",
+  "version": "0.1.0",
+  "description": "Privacy-preserving runtime for lightweight browser agents",
+  "private": true,
+  "scripts": {
+    "build": "tsc && node scripts/build-extension.js",
+    "build:watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.7",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.4.0"
+  }
+}
