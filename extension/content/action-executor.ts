@@ -118,44 +118,49 @@ function executeClick(target: HTMLElement): void {
 }
 
 /**
- * Execute a type action — handles both input/textarea and contenteditable
+ * Execute a type action — simulates real keystrokes so frameworks (React, WhatsApp) process them correctly
  */
 function executeType(target: HTMLElement, text: string): void {
   target.focus();
 
+  // Clear existing content first
   if (isContentEditable(target)) {
-    // Contenteditable: clear and set innerText, then dispatch input event
     target.textContent = '';
-    target.dispatchEvent(new InputEvent('beforeinput', {
-      bubbles: true,
-      cancelable: true,
-      inputType: 'insertText',
-      data: text,
-    }));
-    target.textContent = text;
-    target.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      cancelable: true,
-      inputType: 'insertText',
-      data: text,
-    }));
-    target.dispatchEvent(new Event('change', { bubbles: true }));
   } else {
-    // Standard input/textarea
-    const input = target as HTMLInputElement | HTMLTextAreaElement;
-    input.value = '';
+    (target as HTMLInputElement).value = '';
+  }
 
-    for (const char of text) {
+  // Type each character via keyboard events — this is how real users type
+  for (const char of text) {
+    const key = char;
+
+    target.dispatchEvent(new KeyboardEvent('keydown', {
+      key, code: `Key${char.toUpperCase()}`,
+      bubbles: true, cancelable: true,
+    }));
+
+    target.dispatchEvent(new KeyboardEvent('keypress', {
+      key, code: `Key${char.toUpperCase()}`,
+      bubbles: true, cancelable: true,
+    }));
+
+    // Insert the character
+    if (isContentEditable(target)) {
+      // Use execCommand for contenteditable — frameworks like React handle this properly
+      document.execCommand('insertText', false, char);
+    } else {
+      const input = target as HTMLInputElement | HTMLTextAreaElement;
       input.value += char;
       input.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: char,
+        bubbles: true, cancelable: true,
+        inputType: 'insertText', data: char,
       }));
     }
 
-    input.dispatchEvent(new Event('change', { bubbles: true }));
+    target.dispatchEvent(new KeyboardEvent('keyup', {
+      key, code: `Key${char.toUpperCase()}`,
+      bubbles: true, cancelable: true,
+    }));
   }
 }
 
