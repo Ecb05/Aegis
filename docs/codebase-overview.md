@@ -1,6 +1,7 @@
 # Hermes Codebase Overview
 
 > Generated after commit `86fe743` — fix sidepanel and service worker
+> Updated with planning session context (see docs/session-context.md)
 
 ## Architecture: 3 Layers, 2 Message Paths
 
@@ -22,8 +23,6 @@
            │ chrome.runtime.sendMessage() → back to service worker → port → side panel
 ```
 
----
-
 ## File-by-File Breakdown
 
 ### `extension/manifest.json` — Extension Config
@@ -32,6 +31,10 @@ Chrome Manifest V3 configuration. Declares:
 - **Content script**: `content/content.js` injected on all pages at `document_idle`
 - **Service worker**: `background/service-worker.js`
 - **Side panel**: `ui/sidepanel/sidepanel.html`
+
+⚠️ **MISSING PERMISSIONS** (needed for next phases):
+- `"debugger"` — multi-tab operation via DevTools Protocol
+- `"offscreen"` — model inference in hidden document
 
 ---
 
@@ -75,6 +78,8 @@ A `Logger` class with levels (debug/info/warn/error), stores last 1000 entries i
    ```
 
 Also tracks `activeTabId` via `tabs.onActivated` and `tabs.onUpdated`.
+
+**Future role**: Will become the task manager routing perception/action to specific tabs via debugger API.
 
 ---
 
@@ -156,6 +161,8 @@ Simple appointment booking form with: Patient Name, Email, Phone, Date, Time (dr
 | `docs/architecture.md` | System architecture, data flow diagrams, technology stack |
 | `docs/privacy-model.md` | Sensitivity levels, PII detection, redaction strategies |
 | `docs/action-protocol.md` | Action schema, risk classification, validation pipeline |
+| `docs/technical-decisions.md` | Detailed rationale for all architectural choices |
+| `docs/session-context.md` | Planning session briefing for CLI agents |
 | `docs/codebase-overview.md` | This file |
 
 ---
@@ -195,8 +202,20 @@ Side Panel                Service Worker              Content Script
 | 0 | Repo structure, docs | ✅ |
 | 1 | DOM extraction, Hermes IDs, messaging | ✅ |
 | 2 | Action executor, 8 action types | ✅ |
-| 3 | Local visual perception (screenshot + CV) | ❌ |
-| 4 | Privacy engine (PII detection, redaction) | ❌ |
-| 5 | FastAPI server + LLM integration | ❌ |
-| 6 | Agent loop (observe→reason→act cycle) | ❌ |
-| 7 | Policy engine (allow/confirm/block) | ❌ |
+| **3** | **Local visual perception (screenshot + CV)** | ❌ Next |
+| **4** | **Privacy engine (PII detection, redaction)** | ❌ |
+| **5** | **FastAPI server + LLM integration** | ❌ |
+| **6** | **Agent loop (observe→reason→act cycle)** | ❌ |
+| **7** | **Policy engine (allow/confirm/block)** | ❌ |
+
+## Next Steps (From Planning Session)
+
+1. **Add missing manifest permissions**: `debugger`, `offscreen`
+2. **Create offscreen document**: `extension/offscreen/index.html` + `inference.ts`
+3. **Add debugger bridge**: `extension/utils/debugger-bridge.ts` for background tab operation
+4. **Build perception pipeline**: screenshot → ONNX inference → DOM+vision fusion
+5. **Build privacy engine**: detection cascade → sensitivity taxonomy → task relevance → redaction
+6. **Build server**: FastAPI + LLM integration + action planning
+7. **Wire agent loop**: observe → perceive → sanitize → reason → validate → execute → repeat
+
+See `docs/session-context.md` for full architectural decisions and `docs/technical-decisions.md` for detailed rationale.
