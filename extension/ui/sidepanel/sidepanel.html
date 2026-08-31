@@ -3,86 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hermes Agent</title>
+  <title>Hermes — Browser Agent</title>
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <div class="logo">
-        <span class="logo-icon">🛡️</span>
-        <span class="logo-text">Hermes</span>
-      </div>
-      <div class="status" id="status">Ready</div>
-    </header>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>🔮 Hermes</h1>
+      <span class="version">v0.2.0</span>
+    </div>
 
-    <section class="controls">
-      <button class="btn btn-primary" id="inspect-btn">
-        <span class="btn-icon">🔍</span>
-        Inspect Page
-      </button>
-      <button class="btn btn-secondary" id="action-test-btn" disabled>
-        <span class="btn-icon">⚡</span>
-        Test Action
-      </button>
-    </section>
+    <div id="status" class="status ready">Ready</div>
 
-    <section class="page-info" id="page-info" style="display: none;">
+    <!-- Inspect Section -->
+    <div class="section">
+      <button id="inspect-btn" class="btn btn-primary">🔍 Inspect Page</button>
+    </div>
+
+    <!-- Perception Section -->
+    <div class="section">
+      <button id="perceive-btn" class="btn btn-secondary">👁 Perceive (Vision)</button>
+      <button id="fuse-btn" class="btn btn-secondary">🔗 Fuse DOM + Vision</button>
+    </div>
+
+    <!-- Page Info -->
+    <div id="page-info" class="section hidden">
       <h3>Page Info</h3>
       <div class="info-row">
         <span class="info-label">Title:</span>
-        <span class="info-value" id="page-title">-</span>
+        <span id="page-title" class="info-value">—</span>
       </div>
       <div class="info-row">
         <span class="info-label">URL:</span>
-        <span class="info-value" id="page-url">-</span>
+        <span id="page-url" class="info-value">—</span>
       </div>
       <div class="info-row">
         <span class="info-label">Elements:</span>
-        <span class="info-value" id="element-count">-</span>
+        <span id="element-count" class="info-value">0</span>
       </div>
-    </section>
+    </div>
 
-    <section class="elements-panel" id="elements-panel" style="display: none;">
-      <h3>Extracted Elements</h3>
-      <div class="element-list" id="element-list"></div>
-    </section>
+    <!-- Perception Results -->
+    <div id="perception-panel" class="section hidden">
+      <h3>Perception Results</h3>
+      <div class="info-row">
+        <span class="info-label">Classification:</span>
+        <span id="page-classification" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Vision Elements:</span>
+        <span id="vision-element-count" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Fused:</span>
+        <span id="fused-count" class="info-value">0</span>
+      </div>
+    </div>
 
-    <section class="action-panel" id="action-panel" style="display: none;">
-      <h3>Test Action</h3>
-      <div class="action-form">
+    <!-- Elements Panel -->
+    <div id="elements-panel" class="section hidden">
+      <h3>Elements</h3>
+      <div id="element-list"></div>
+    </div>
+
+    <!-- Action Panel -->
+    <div id="action-panel" class="section hidden">
+      <button id="action-test-btn" class="btn btn-secondary">⚡ Test Action</button>
+
+      <div class="action-controls">
         <div class="form-group">
-          <label for="action-select">Action:</label>
+          <label>Action</label>
           <select id="action-select">
             <option value="click">click</option>
             <option value="type">type</option>
             <option value="scroll">scroll</option>
+            <option value="select">select</option>
             <option value="hover">hover</option>
+            <option value="navigate">navigate</option>
+            <option value="wait">wait</option>
+            <option value="press_key">press_key</option>
           </select>
         </div>
+
         <div class="form-group">
-          <label for="target-select">Target:</label>
-          <select id="target-select"></select>
+          <label>Target</label>
+          <select id="target-select">
+            <option value="">-- select element --</option>
+          </select>
         </div>
-        <div class="form-group" id="text-param-group" style="display: none;">
-          <label for="text-param">Text:</label>
+
+        <div id="text-param-group" class="form-group" style="display:none;">
+          <label>Text</label>
           <input type="text" id="text-param" placeholder="Enter text...">
         </div>
-        <button class="btn btn-primary" id="execute-btn" disabled>
-          Execute
-        </button>
+
+        <button id="execute-btn" class="btn btn-primary" disabled>Execute</button>
       </div>
-    </section>
+    </div>
 
-    <section class="result-panel" id="result-panel" style="display: none;">
-      <h3>Action Result</h3>
-      <div class="result" id="result-content"></div>
-    </section>
+    <!-- Result Panel -->
+    <div id="result-panel" class="section hidden">
+      <h3>Result</h3>
+      <div id="result-content" class="result"></div>
+    </div>
 
-    <section class="json-panel" id="json-panel" style="display: none;">
+    <!-- JSON Panel -->
+    <div id="json-panel" class="section hidden">
       <h3>Browser State (JSON)</h3>
-      <pre class="json-output" id="json-output"></pre>
-    </section>
+      <pre id="json-output" class="json-output"></pre>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="empty-state">
+      <h2>🔮 Hermes Agent</h2>
+      <p>Privacy-preserving browser automation</p>
+      <p>Click <strong>🔍 Inspect Page</strong> to start</p>
+    </div>
   </div>
 
   <script src="sidepanel.js"></script>

@@ -66,6 +66,39 @@ async function bundleScripts() {
   });
   console.log('  ✓ background/service-worker.js');
 
+  // Offscreen document — for model inference (bundles Transformers.js)
+  await esbuild.build({
+    entryPoints: [path.join(EXT_DIR, 'offscreen', 'offscreen.ts')],
+    bundle: true,
+    outfile: path.join(DIST_DIR, 'offscreen', 'offscreen.js'),
+    format: 'iife',
+    target: 'chrome90',
+    sourcemap: false,
+    minify: false,
+  });
+
+  // Strip CDN URLs from ORT to comply with extension CSP
+  const offscreenPath = path.join(DIST_DIR, 'offscreen', 'offscreen.js');
+  let offscreenCode = fs.readFileSync(offscreenPath, 'utf8');
+  offscreenCode = offscreenCode.replace(
+    /const wasmPathPrefix = `https:\/\/cdn\.jsdelivr\.net[^`]*`;/g,
+    'const wasmPathPrefix = "";'
+  );
+  fs.writeFileSync(offscreenPath, offscreenCode);
+  console.log('  ✓ offscreen/offscreen.js (CDN stripped)');
+
+  // Copy WASM files from node_modules to offscreen directory
+  const ortDist = path.join(ROOT_DIR, 'node_modules', 'onnxruntime-web', 'dist');
+  const ortFiles = ['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.mjs'];
+  for (const file of ortFiles) {
+    const src = path.join(ortDist, file);
+    const dest = path.join(DIST_DIR, 'offscreen', file);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+      console.log(`  ✓ offscreen/${file}`);
+    }
+  }
+
   console.log('✓ All scripts bundled');
 }
 
@@ -83,6 +116,7 @@ function copyStaticFiles() {
   const htmlCssFiles = [
     { src: 'ui/sidepanel/sidepanel.html', dest: 'ui/sidepanel/sidepanel.html' },
     { src: 'ui/sidepanel/sidepanel.css', dest: 'ui/sidepanel/sidepanel.css' },
+    { src: 'offscreen/index.html', dest: 'offscreen/index.html' },
   ];
 
   for (const { src, dest } of htmlCssFiles) {

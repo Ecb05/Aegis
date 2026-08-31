@@ -1,10 +1,13 @@
-// Hermes Service Worker v5
-// Two message paths:
-//   Side panel → port → service worker → chrome.tabs.sendMessage → content script
-//   Content script → chrome.runtime.sendMessage → service worker → port → side panel
+// Hermes Service Worker v7
+// Routes messages, manages tabs, offscreen document, and perception pipeline
 
 let activeTabId: number | null = null;
 let sidePanelPort: chrome.runtime.Port | null = null;
+
+// Offscreen document management
+let offscreenReady = false;
+let modelsInitialized = false;
+const OFFSCREEN_URL = 'offscreen/index.html';
 
 // Set side panel to open on icon click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((err) => {
@@ -39,17 +42,15 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
-// Handle messages FROM content scripts — forward to side panel via port
+// Handle messages from content scripts — forward to side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.source === 'content') {
     console.log('[Hermes] Content response:', message.type);
 
-    // Update active tab from content script sender
     if (sender.tab?.id) {
       activeTabId = sender.tab.id;
     }
 
-    // Forward to side panel
     if (sidePanelPort) {
       try {
         sidePanelPort.postMessage(message);
@@ -58,14 +59,140 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }
   }
+
+  // Handle offscreen document responses
+  if (message.source === 'offscreen') {
+    console.log('[Hermes] Offscreen response:', message.type);
+    if (sidePanelPort) {
+      try {
+        sidePanelPort.postMessage(message);
+      } catch (err) {
+        console.error('[Hermes] Failed to forward offscreen msg:', err);
+      }
+    }
+  }
+
   sendResponse({ ok: true });
 });
 
-// Handle messages FROM side panel — forward to content script
+// Handle messages from side panel
 async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
   const tabId = activeTabId;
   console.log('[Hermes] From side panel:', message.type, 'tab:', tabId);
 
+  // Handle offscreen document management
+  if (message.type === 'ENSURE_OFFSCREEN') {
+    try {
+      await ensureOffscreen();
+      console.log('[Hermes] Offscreen ready:', offscreenReady);
+      port.postMessage({
+        type: 'OFFSCREEN_STATUS',
+        payload: { ready: offscreenReady },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] Offscreen creation failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'Failed to create offscreen document: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
+  // Handle model initialization
+  if (message.type === 'INIT_MODELS') {
+    try {
+      await ensureOffscreen();
+      console.log('[Hermes] Sending OFFSCREEN_INIT...');
+      const response = await chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_INIT',
+      });
+      console.log('[Hermes] OFFSCREEN_INIT response:', response);
+      modelsInitialized = response?.ready || false;
+      port.postMessage({
+        type: 'MODELS_STATUS',
+        payload: { ready: modelsInitialized, progress: response?.progress },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] Model init failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'Failed to initialize models: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
+  // Handle perception requests
+  if (message.type === 'PERCEIVE') {
+    try {
+      await ensureOffscreen();
+      console.log('[Hermes] Sending OFFSCREEN_PERCEIVE...');
+      const response = await chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_PERCEIVE',
+        imageData: message.payload?.imageData,
+      });
+      console.log('[Hermes] OFFSCREEN_PERCEIVE response:', response?.type, response);
+      port.postMessage({
+        type: 'PERCEPTION_RESULT',
+        payload: response,
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] Perception failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'Perception failed: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
+  // Handle screenshot requests
+  if (message.type === 'CAPTURE_SCREENSHOT') {
+    if (!tabId) {
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'No active tab' },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    try {
+      const screenshot = await captureScreenshot(tabId);
+      console.log('[Hermes] Screenshot captured, length:', screenshot.length);
+      port.postMessage({
+        type: 'SCREENSHOT_RESULT',
+        payload: { dataUrl: screenshot },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] Screenshot failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'Screenshot failed: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
+  // Handle tab-specific actions (forward to content script)
   if (!tabId) {
     port.postMessage({
       type: 'ERROR',
@@ -94,7 +221,7 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     }
   }
 
-  // Forward the message to the content script (don't await response — content script sends it back separately)
+  // Forward to content script
   try {
     chrome.tabs.sendMessage(tabId, message).catch(err => {
       console.error('[Hermes] Send to content failed:', err);
@@ -115,4 +242,74 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
   }
 }
 
-console.log('[Hermes] Service worker v5 started');
+// Ensure offscreen document exists
+async function ensureOffscreen(): Promise<void> {
+  if (offscreenReady) return;
+
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+  });
+
+  if (existingContexts.length > 0) {
+    offscreenReady = true;
+    return;
+  }
+
+  try {
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['WORKERS' as any],
+      justification: 'Model inference requires WebGPU/WASM in offscreen document',
+    });
+    // Wait for document to load
+    await new Promise(r => setTimeout(r, 1000));
+    offscreenReady = true;
+    console.log('[Hermes] Offscreen document created');
+  } catch (err) {
+    console.error('[Hermes] Failed to create offscreen document:', err);
+    throw err;
+  }
+}
+
+// Capture screenshot using available methods
+async function captureScreenshot(tabId: number): Promise<string> {
+  // Try visible tab capture first (works for active tab)
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      chrome.tabs.captureVisibleTab(undefined as any, { format: 'png', quality: 100 }, (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!dataUrl) {
+          reject(new Error('No screenshot'));
+          return;
+        }
+        resolve(dataUrl);
+      });
+    });
+  } catch {
+    // Fallback to debugger API for background tabs
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      const result = await chrome.debugger.sendCommand(
+        { tabId },
+        'Page.captureScreenshot',
+        { format: 'png', quality: 100 }
+      ) as { data: string };
+      await chrome.debugger.detach({ tabId });
+      return `data:image/png;base64,${result.data}`;
+    } catch (err) {
+      throw new Error('Both screenshot methods failed: ' + String(err));
+    }
+  }
+}
+
+// Cleanup on startup
+chrome.runtime.onStartup.addListener(() => {
+  offscreenReady = false;
+  modelsInitialized = false;
+  console.log('[Hermes] Extension started');
+});
+
+console.log('[Hermes] Service worker v7 started');

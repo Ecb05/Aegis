@@ -9,12 +9,28 @@ export type MessageType =
   | 'ACTION_RESULT'
   | 'GET_STATE'
   | 'SET_ACTIVE_TAB'
-  | 'ERROR';
+  | 'ERROR'
+  // Perception types
+  | 'PERCEIVE'
+  | 'PERCEPTION_RESULT'
+  | 'CAPTURE_SCREENSHOT'
+  | 'SCREENSHOT_RESULT'
+  | 'ENSURE_OFFSCREEN'
+  | 'OFFSCREEN_STATUS'
+  | 'INIT_MODELS'
+  | 'MODELS_STATUS'
+  | 'OFFSCREEN_PING'
+  | 'OFFSCREEN_PONG'
+  | 'OFFSCREEN_INIT'
+  | 'OFFSCREEN_CLASSIFY'
+  | 'OFFSCREEN_DETECT'
+  | 'OFFSCREEN_EMBED'
+  | 'OFFSCREEN_PERCEIVE';
 
 export interface HermesMessage {
   type: MessageType;
   payload: unknown;
-  source: 'content' | 'background' | 'sidepanel';
+  source: 'content' | 'background' | 'sidepanel' | 'offscreen';
   timestamp: number;
 }
 
@@ -72,6 +88,8 @@ export interface HermesElement {
   visible: boolean;
   sensitive: boolean;
   attributes: Record<string, string>;
+  confidence?: number;
+  sources?: ('dom' | 'vision')[];
 }
 
 export type ElementRole =
@@ -117,6 +135,45 @@ export interface ActionResult {
   target?: string;
   error?: string;
   timestamp: number;
+}
+
+// Perception Types
+export interface PerceptionResult {
+  classification: ClassificationResult[];
+  detection: DetectedElement[];
+  fusion?: FusionResult;
+  timestamp: number;
+}
+
+export interface ClassificationResult {
+  label: string;
+  score: number;
+}
+
+export interface DetectedElement {
+  label: string;
+  score: number;
+  bbox: BoundingBox;
+}
+
+export interface FusionResult {
+  fused: FusedElement[];
+  domOnly: HermesElement[];
+  visionOnly: DetectedElement[];
+  stats: {
+    total: number;
+    fused: number;
+    domOnly: number;
+    visionOnly: number;
+    avgConfidence: number;
+  };
+}
+
+export interface FusedElement extends HermesElement {
+  sources: ('dom' | 'vision')[];
+  domElement?: HermesElement;
+  visionElement?: DetectedElement;
+  fusionConfidence: number;
 }
 
 // Helper to create messages
