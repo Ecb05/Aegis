@@ -27,7 +27,10 @@ export type MessageType =
   | 'OFFSCREEN_OCR'
   | 'OFFSCREEN_EMBED'
   | 'OFFSCREEN_PERCEIVE'
-  | 'OCR_RESULT';
+  | 'OCR_RESULT'
+  // Privacy types
+  | 'SANITIZE'
+  | 'SANITIZE_RESULT';
 
 export interface HermesMessage {
   type: MessageType;
@@ -191,6 +194,120 @@ export interface FusedElement extends HermesElement {
   domElement?: HermesElement;
   visionElement?: DetectedElement;
   fusionConfidence: number;
+}
+
+// ─── Privacy Engine Types ──────────────────────────────────────
+
+/** Data type detected by the detection cascade */
+export type DataType =
+  | 'password'
+  | 'pin'
+  | 'credit_card'
+  | 'debit_card'
+  | 'bank_account'
+  | 'cvv'
+  | 'card_expiry'
+  | 'pan_number'
+  | 'aadhaar_number'
+  | 'ssn'
+  | 'passport_number'
+  | 'api_key'
+  | 'medical_record'
+  | 'mfa_code'
+  | 'hidden_field'
+  | 'email'
+  | 'phone'
+  | 'address_line'
+  | 'ifsc_code'
+  | 'upi_id'
+  | 'insurance_id'
+  | 'otp'
+  | 'security_question'
+  | 'full_name'
+  | 'first_name'
+  | 'last_name'
+  | 'date_of_birth'
+  | 'gender'
+  | 'zip_code'
+  | 'product_name'
+  | 'price'
+  | 'date'
+  | 'time'
+  | 'location_name'
+  | 'category'
+  | 'rating'
+  | 'quantity'
+  | 'search_query'
+  | 'url'
+  | 'page_title'
+  | 'button_label'
+  | 'navigation_text'
+  | 'unknown';
+
+/** Sensitivity level (0 = public, 4 = never transmit) */
+export type SensitivityLevel = 0 | 1 | 2 | 3 | 4;
+
+/** Task relevance classification */
+export type Relevance = 'RELEVANT' | 'CONDITIONAL' | 'NEVER';
+
+/** Treatment applied by the redactor */
+export type Treatment = 'pass' | 'pseudonymize' | 'redact' | 'omit' | 'protective_proxy';
+
+/** Result of the detection cascade for one element */
+export interface DetectionResult {
+  dataType: DataType;
+  confidence: number;
+  source: string; // which cascade step matched (e.g., 'autocomplete', 'type', 'aria-label')
+}
+
+/** Result of sensitivity classification */
+export interface SensitivityResult {
+  dataType: DataType;
+  level: SensitivityLevel;
+  confidence: number;
+}
+
+/** Result of task relevance assessment */
+export interface TaskRelevanceResult {
+  relevance: Relevance;
+  reason: string;
+}
+
+/** A sanitized element ready to send to the server */
+export interface SanitizedElement {
+  id: string;
+  role: ElementRole;
+  label: string;
+  value?: string;           // redacted/pseudonymized value (or undefined if omitted)
+  originalDataType?: DataType;
+  sensitivity: SensitivityLevel;
+  relevance: Relevance;
+  treatment: Treatment;
+  status?: 'pre-filled' | 'empty' | 'user-provided'; // for protective proxy
+  visible?: boolean;
+  bbox?: BoundingBox;
+}
+
+/** Complete sanitized state sent to the server */
+export interface SanitizedState {
+  elements: SanitizedElement[];
+  task: string;
+  pageInfo: PageInfo;
+  stats: {
+    total: number;
+    passed: number;
+    pseudonymized: number;
+    redacted: number;
+    omitted: number;
+    protected: number;
+  };
+}
+
+/** Request to sanitize browser state */
+export interface SanitizeRequest {
+  browserState: BrowserState;
+  task: string;
+  mode?: 'standard' | 'strict' | 'local-only';
 }
 
 // Helper to create messages

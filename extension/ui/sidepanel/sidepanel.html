@@ -82,6 +82,48 @@
       <div id="ocr-text-output" class="ocr-output"></div>
     </div>
 
+    <!-- Privacy Section -->
+    <div class="section">
+      <button id="sanitize-btn" class="btn btn-secondary">🛡️ Sanitize (Privacy)</button>
+      <select id="privacy-mode-select">
+        <option value="standard">Standard</option>
+        <option value="strict">Strict</option>
+        <option value="local-only">Local Only</option>
+      </select>
+      <input type="text" id="task-input" placeholder="Enter task description..." class="task-input">
+    </div>
+
+    <!-- Privacy Results -->
+    <div id="privacy-panel" class="section hidden">
+      <h3>Privacy Results</h3>
+      <div class="info-row">
+        <span class="info-label">Total:</span>
+        <span id="privacy-total" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">✅ Passed:</span>
+        <span id="privacy-passed" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">🔤 Pseudonymized:</span>
+        <span id="privacy-pseudonymized" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">🔴 Redacted:</span>
+        <span id="privacy-redacted" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">❌ Omitted:</span>
+        <span id="privacy-omitted" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">🛡️ Protected:</span>
+        <span id="privacy-protected" class="info-value">0</span>
+      </div>
+      <div id="pseudonym-map" class="pseudonym-map"></div>
+      <div id="sanitized-elements" class="sanitized-elements"></div>
+    </div>
+
     <!-- Elements Panel -->
     <div id="elements-panel" class="section hidden">
       <h3>Elements</h3>

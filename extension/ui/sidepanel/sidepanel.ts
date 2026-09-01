@@ -523,4 +523,105 @@ actionSelect.addEventListener('change', () => {
   textParamGroup.style.display = actionSelect.value === 'type' ? 'flex' : 'none';
 });
 
+// ─── Privacy / Sanitize ─────────────────────────────────────
+
+const sanitizeBtn = document.getElementById('sanitize-btn') as HTMLButtonElement;
+const privacyModeSelect = document.getElementById('privacy-mode-select') as HTMLSelectElement;
+const taskInput = document.getElementById('task-input') as HTMLInputElement;
+const privacyPanel = document.getElementById('privacy-panel')!;
+const privacyTotal = document.getElementById('privacy-total')!;
+const privacyPassed = document.getElementById('privacy-passed')!;
+const privacyPseudonymized = document.getElementById('privacy-pseudonymized')!;
+const privacyRedacted = document.getElementById('privacy-redacted')!;
+const privacyOmitted = document.getElementById('privacy-omitted')!;
+const privacyProtected = document.getElementById('privacy-protected')!;
+const pseudonymMapEl = document.getElementById('pseudonym-map')!;
+const sanitizedElementsEl = document.getElementById('sanitized-elements')!;
+
+sanitizeBtn.addEventListener('click', async () => {
+  if (!currentState) {
+    setStatus('No page state — inspect first', 'error');
+    return;
+  }
+
+  const task = taskInput.value || 'General browsing';
+  const mode = privacyModeSelect.value as 'standard' | 'strict' | 'local-only';
+
+  setStatus('Sanitizing...', 'loading');
+  sanitizeBtn.disabled = true;
+
+  try {
+    const response = await sendAndWait('SANITIZE', {
+      browserState: currentState,
+      task,
+      mode,
+    }, 30000);
+
+    const result = response.payload;
+    displayPrivacyResults(result);
+    setStatus('Sanitized', 'success');
+  } catch (err) {
+    console.error('[Hermes] Sanitize failed:', err);
+    setStatus(`Sanitize failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  } finally {
+    sanitizeBtn.disabled = false;
+  }
+});
+
+function displayPrivacyResults(result: any): void {
+  const { sanitizedState, pseudonymMap } = result;
+  const { stats, elements } = sanitizedState;
+
+  // Show privacy panel
+  showSection('privacy-panel', true);
+
+  // Update stats
+  privacyTotal.textContent = String(stats.total);
+  privacyPassed.textContent = String(stats.passed);
+  privacyPseudonymized.textContent = String(stats.pseudonymized);
+  privacyRedacted.textContent = String(stats.redacted);
+  privacyOmitted.textContent = String(stats.omitted);
+  privacyProtected.textContent = String(stats.protected);
+
+  // Show pseudonym map
+  pseudonymMapEl.innerHTML = '';
+  if (pseudonymMap && pseudonymMap.length > 0) {
+    const title = document.createElement('div');
+    title.style.fontWeight = '600';
+    title.style.marginBottom = '4px';
+    title.textContent = 'Pseudonym Map:';
+    pseudonymMapEl.appendChild(title);
+
+    for (const entry of pseudonymMap) {
+      const row = document.createElement('div');
+      row.className = 'pseudonym-entry';
+      row.innerHTML = `<span class="pseudonym-token">${entry.token}</span><span class="pseudonym-type">${entry.type}</span>`;
+      pseudonymMapEl.appendChild(row);
+    }
+  }
+
+  // Show sanitized elements
+  sanitizedElementsEl.innerHTML = '';
+  for (const el of elements) {
+    const row = document.createElement('div');
+    row.className = 'sanitized-element';
+
+    const treatmentClass = `treatment-${el.treatment}`;
+    const valueDisplay = el.value ? el.value : (el.status ? `[${el.status}]` : '—');
+
+    row.innerHTML = `
+      <span class="elem-id">${el.id}</span>
+      <span class="elem-label" title="${el.label}">${el.label}</span>
+      <span class="treatment-badge ${treatmentClass}">${el.treatment}</span>
+    `;
+
+    // Add value as tooltip
+    if (el.value) {
+      row.title = `Value: ${el.value}\nType: ${el.originalDataType}\nSensitivity: ${el.sensitivity}\nRelevance: ${el.relevance}`;
+    }
+
+    sanitizedElementsEl.appendChild(row);
+  }
+}
+
 console.log('[Hermes] Side panel v8 loaded');

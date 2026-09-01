@@ -187,6 +187,56 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     return;
   }
 
+  // Handle privacy sanitization requests
+  if (message.type === 'SANITIZE') {
+    try {
+      const { runPrivacyPipeline, getPrivacySummary } = await import('../privacy/privacy-engine');
+      const { setPrivacyMode } = await import('../privacy/policy');
+
+      const browserState = message.payload?.browserState;
+      const task = message.payload?.task || '';
+      const mode = message.payload?.mode;
+
+      if (!browserState) {
+        port.postMessage({
+          type: 'ERROR',
+          payload: { message: 'SANITIZE requires browserState' },
+          source: 'background',
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      if (mode) {
+        setPrivacyMode(mode);
+      }
+
+      console.log('[Hermes] Running privacy pipeline...');
+      const result = runPrivacyPipeline(browserState, task, mode);
+      console.log('[Hermes] Privacy pipeline complete:', result.sanitizedState.stats);
+
+      port.postMessage({
+        type: 'SANITIZE_RESULT',
+        payload: {
+          sanitizedState: result.sanitizedState,
+          summary: getPrivacySummary(result),
+          pseudonymMap: result.pseudonymMap,
+        },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] Sanitization failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'Sanitization failed: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
   // Handle screenshot requests
   if (message.type === 'CAPTURE_SCREENSHOT') {
     if (!tabId) {
