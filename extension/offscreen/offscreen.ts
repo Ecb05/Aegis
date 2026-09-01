@@ -51,14 +51,14 @@ async function initModels(): Promise<void> {
     throw err;
   }
 
-  // OCR — Tesseract.js (bundled worker, no blob URL needed)
+  // OCR — Tesseract.js (all files bundled locally, no CDN/blob URLs)
   loadingProgress.ocr = "loading";
   console.log("[Hermes Offscreen] Loading OCR worker...");
-  const workerPath = chrome.runtime.getURL("offscreen/tesseract-worker.min.js");
-  console.log("[Hermes Offscreen] Tesseract worker path:", workerPath);
+  const offscreenDir = chrome.runtime.getURL("offscreen/");
   ocrWorker = await createWorker("eng", 1, {
-    workerPath,
-    workerBlobURL: false, // CSP-safe: use direct file path, not blob URL
+    workerPath: offscreenDir + "tesseract-worker.min.js",
+    corePath: offscreenDir,  // Points to local tesseract-core-simd-lstm.* files
+    workerBlobURL: false,     // CSP-safe: use direct file path, not blob URL
     logger: (m) => {
       if (m.status === "recognizing text") {
         loadingProgress.ocr = `recognizing ${Math.round((m.progress || 0) * 100)}%`;

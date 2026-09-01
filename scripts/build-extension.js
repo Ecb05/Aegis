@@ -134,12 +134,24 @@ async function bundleScripts() {
     }
   }
 
-  // Copy Tesseract.js worker file
-  const tesseractWorker = path.join(ROOT_DIR, 'node_modules', 'tesseract.js', 'dist', 'worker.min.js');
-  const tesseractDest = path.join(DIST_DIR, 'offscreen', 'tesseract-worker.min.js');
-  if (fs.existsSync(tesseractWorker)) {
-    fs.copyFileSync(tesseractWorker, tesseractDest);
-    console.log('  ✓ offscreen/tesseract-worker.min.js');
+  // Copy Tesseract.js worker + core files
+  const tesseractDist = path.join(DIST_DIR, 'offscreen');
+  const tesseractFiles = [
+    { src: ['node_modules', 'tesseract.js', 'dist', 'worker.min.js'], dest: 'tesseract-worker.min.js' },
+    { src: ['node_modules', 'tesseract.js-core', 'tesseract-core-simd-lstm.js'], dest: 'tesseract-core-simd-lstm.js' },
+    { src: ['node_modules', 'tesseract.js-core', 'tesseract-core-simd-lstm.wasm'], dest: 'tesseract-core-simd-lstm.wasm' },
+    { src: ['node_modules', 'tesseract.js-core', 'tesseract-core-simd-lstm.wasm.js'], dest: 'tesseract-core-simd-lstm.wasm.js' },
+  ];
+  for (const { src, dest } of tesseractFiles) {
+    const srcPath = path.join(ROOT_DIR, ...src);
+    const destPath = path.join(tesseractDist, dest);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, destPath);
+      const size = (fs.statSync(srcPath).size / 1024).toFixed(0);
+      console.log(`  ✓ offscreen/${dest} (${size}K)`);
+    } else {
+      console.warn(`  ⚠ Missing: ${srcPath}`);
+    }
   }
 
   console.log('\n✓ All scripts bundled');

@@ -52,7 +52,7 @@
       "resources": [
         "offscreen/*.wasm",
         "offscreen/*.mjs",
-        "offscreen/tesseract-worker.min.js"
+        "offscreen/*.js"
       ],
       "matches": ["<all_urls>"]
     }
