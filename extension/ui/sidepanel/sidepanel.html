@@ -47,6 +47,10 @@
     <div id="perception-panel" class="section hidden">
       <h3>Perception Results</h3>
       <div class="info-row">
+        <span class="info-label">Device:</span>
+        <span id="perception-device" class="info-value">—</span>
+      </div>
+      <div class="info-row">
         <span class="info-label">Classification:</span>
         <span id="page-classification" class="info-value">—</span>
       </div>
@@ -58,6 +62,24 @@
         <span class="info-label">Fused:</span>
         <span id="fused-count" class="info-value">0</span>
       </div>
+      <div class="info-row">
+        <span class="info-label">Latency:</span>
+        <span id="perception-latency" class="info-value">—</span>
+      </div>
+    </div>
+
+    <!-- OCR Results -->
+    <div id="ocr-panel" class="section hidden">
+      <h3>OCR Results</h3>
+      <div class="info-row">
+        <span class="info-label">Text Blocks:</span>
+        <span id="ocr-block-count" class="info-value">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Confidence:</span>
+        <span id="ocr-confidence" class="info-value">—</span>
+      </div>
+      <div id="ocr-text-output" class="ocr-output"></div>
     </div>
 
     <!-- Elements Panel -->

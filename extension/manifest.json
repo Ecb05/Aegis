@@ -49,7 +49,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["offscreen/*", "wasm/*"],
+      "resources": [
+        "offscreen/*.wasm",
+        "offscreen/*.mjs",
+        "offscreen/tesseract-worker.min.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

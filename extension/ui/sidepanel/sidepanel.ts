@@ -12,9 +12,15 @@ const pageTitle = document.getElementById('page-title')!;
 const pageUrl = document.getElementById('page-url')!;
 const elementCount = document.getElementById('element-count')!;
 const perceptionPanel = document.getElementById('perception-panel')!;
+const perceptionDevice = document.getElementById('perception-device')!;
 const pageClassification = document.getElementById('page-classification')!;
 const visionElementCount = document.getElementById('vision-element-count')!;
 const fusedCount = document.getElementById('fused-count')!;
+const perceptionLatency = document.getElementById('perception-latency')!;
+const ocrPanel = document.getElementById('ocr-panel')!;
+const ocrBlockCount = document.getElementById('ocr-block-count')!;
+const ocrConfidence = document.getElementById('ocr-confidence')!;
+const ocrTextOutput = document.getElementById('ocr-text-output')!;
 const elementsPanel = document.getElementById('elements-panel')!;
 const elementList = document.getElementById('element-list')!;
 const actionPanel = document.getElementById('action-panel')!;
@@ -307,6 +313,17 @@ function displayState(state: BrowserState): void {
 function displayPerception(perception: any): void {
   showSection('perception-panel', true);
 
+  // Device info
+  if (perception.device) {
+    perceptionDevice.textContent = perception.device === 'webgpu' ? '🟢 WebGPU' : '🟡 WASM';
+  }
+
+  // Latency
+  if (perception.elapsed) {
+    perceptionLatency.textContent = `${perception.elapsed}ms`;
+  }
+
+  // Classification
   if (perception.classification?.predictions) {
     const top = perception.classification.predictions[0];
     pageClassification.textContent = top ? `${top.label} (${(top.score * 100).toFixed(1)}%)` : '—';
@@ -314,10 +331,32 @@ function displayPerception(perception: any): void {
     pageClassification.textContent = `Error: ${perception.classification.error}`;
   }
 
+  // Vision detection
   if (perception.detection?.elements) {
     visionElementCount.textContent = String(perception.detection.elements.length);
   } else if (perception.detection?.error) {
     visionElementCount.textContent = `Error: ${perception.detection.error}`;
+  }
+
+  // OCR results
+  if (perception.ocr && !perception.ocr.error) {
+    showSection('ocr-panel', true);
+    const ocrData = perception.ocr;
+    ocrBlockCount.textContent = String(ocrData.textBlocks?.length || 0);
+    ocrConfidence.textContent = ocrData.confidence ? `${(ocrData.confidence * 100).toFixed(1)}%` : '—';
+    
+    if (ocrData.textBlocks?.length > 0) {
+      ocrTextOutput.innerHTML = ocrData.textBlocks
+        .filter((b: any) => b.text.trim())
+        .map((b: any) => `<div class="ocr-block"><span class="ocr-text">${escapeHtml(b.text)}</span> <span class="ocr-conf">${(b.confidence * 100).toFixed(0)}%</span></div>`)
+        .join('');
+    } else {
+      ocrTextOutput.textContent = 'No text detected';
+    }
+  } else if (perception.ocr?.error) {
+    showSection('ocr-panel', true);
+    ocrBlockCount.textContent = 'Error';
+    ocrConfidence.textContent = perception.ocr.error;
   }
 }
 

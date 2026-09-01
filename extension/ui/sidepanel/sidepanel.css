@@ -286,6 +286,39 @@ body {
   font-size: 14px;
 }
 
+/* OCR Output */
+.ocr-output {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.ocr-block {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: #1a1b1e;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.ocr-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e4e6eb;
+}
+
+.ocr-conf {
+  color: #66bb6a;
+  font-size: 11px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

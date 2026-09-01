@@ -159,6 +159,34 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     return;
   }
 
+  // Handle OCR-only requests
+  if (message.type === 'OCR') {
+    try {
+      await ensureOffscreen();
+      console.log('[Hermes] Sending OFFSCREEN_OCR...');
+      const response = await chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_OCR',
+        imageData: message.payload?.imageData,
+      });
+      console.log('[Hermes] OFFSCREEN_OCR response:', response?.type, response);
+      port.postMessage({
+        type: 'OCR_RESULT',
+        payload: response,
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.error('[Hermes] OCR failed:', err);
+      port.postMessage({
+        type: 'ERROR',
+        payload: { message: 'OCR failed: ' + String(err) },
+        source: 'background',
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
   // Handle screenshot requests
   if (message.type === 'CAPTURE_SCREENSHOT') {
     if (!tabId) {

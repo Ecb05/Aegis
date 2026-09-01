@@ -1,10 +1,10 @@
-// Hermes Extension Build Script
-// Bundles content scripts and side panel with esbuild, copies static files
+// Hermes Extension Build Script v3
+// External script files with import_meta.url fix for ORT same-origin checks
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const esbuild = require('esbuild');
+const crypto = require('crypto');
 
 const ROOT_DIR = path.join(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -24,25 +24,61 @@ function cleanDist() {
 }
 
 /**
- * Bundle TypeScript files with esbuild into single JS files
- * This resolves all imports into one file — no ES modules needed
+ * Post-process offscreen bundle:
+ * 1. Strip CDN URLs
+ * 2. Fix import_meta.url so ORT same-origin check passes (no blob:)
  */
-async function bundleScripts() {
-  console.log('Bundling scripts with esbuild...');
+function patchOffscreenCode(code) {
+  // Strip CDN URLs from ORT
+  code = code.replace(
+    /const wasmPathPrefix = `https:\/\/cdn\.jsdelivr\.net[^`]*`;/g,
+    'const wasmPathPrefix = "";'
+  );
 
-  // Content script (injected into pages) — must be a single file, no modules
+  // Fix import_meta — esbuild sets it to {} in IIFE format.
+  // ORT uses import_meta.url for same-origin checks. When undefined,
+  // ORT falls through to blob: URL creation. We set it to the actual
+  // script URL so the origin check passes.
+  //
+  // ORT bundles TWO copies (WebGPU + WASM), using import_meta and import_meta2.
+  // Both need the same fix.
+  //
+  // self.location.href = chrome-extension://EXT_ID/offscreen/index.html
+  // new URL("offscreen.js", self.location.href) = chrome-extension://EXT_ID/offscreen/offscreen.js
+  // This matches the document origin, so ORT skips blob URL creation.
+  const scriptUrlFix = '{ url: new URL("offscreen.js", self.location.href).href }';
+  // ORT bundles multiple copies (WebGPU, WASM, etc.) — fix ALL of them
+  code = code.replace(
+    /(var import_meta\d*)\s*=\s*\{\};/g,
+    `$1 = ${scriptUrlFix};`
+  );
+
+  return code;
+}
+
+/**
+ * Generate sha256 hash for CSP
+ */
+function sha256(content) {
+  return 'sha256-' + crypto.createHash('sha256').update(content).digest('base64');
+}
+
+async function bundleScripts() {
+  console.log('Bundling scripts with esbuild...\n');
+
+  // Content script
   await esbuild.build({
     entryPoints: [path.join(EXT_DIR, 'content', 'content.ts')],
     bundle: true,
     outfile: path.join(DIST_DIR, 'content', 'content.js'),
-    format: 'iife',       // Immediately invoked — no import/export
+    format: 'iife',
     target: 'chrome90',
     sourcemap: false,
     minify: false,
   });
   console.log('  ✓ content/content.js');
 
-  // Side panel script — must be a single file
+  // Side panel script
   await esbuild.build({
     entryPoints: [path.join(EXT_DIR, 'ui', 'sidepanel', 'sidepanel.ts')],
     bundle: true,
@@ -54,7 +90,7 @@ async function bundleScripts() {
   });
   console.log('  ✓ ui/sidepanel/sidepanel.js');
 
-  // Service worker — can use modules but let's bundle it too for safety
+  // Service worker
   await esbuild.build({
     entryPoints: [path.join(EXT_DIR, 'background', 'service-worker.ts')],
     bundle: true,
@@ -66,7 +102,9 @@ async function bundleScripts() {
   });
   console.log('  ✓ background/service-worker.js');
 
-  // Offscreen document — for model inference (bundles Transformers.js)
+  // ─── Offscreen document ─────────────────────────────────
+  ensureDir(path.join(DIST_DIR, 'offscreen'));
+
   await esbuild.build({
     entryPoints: [path.join(EXT_DIR, 'offscreen', 'offscreen.ts')],
     bundle: true,
@@ -77,17 +115,14 @@ async function bundleScripts() {
     minify: false,
   });
 
-  // Strip CDN URLs from ORT to comply with extension CSP
+  // Post-process: fix import_meta.url + strip CDN
   const offscreenPath = path.join(DIST_DIR, 'offscreen', 'offscreen.js');
-  let offscreenCode = fs.readFileSync(offscreenPath, 'utf8');
-  offscreenCode = offscreenCode.replace(
-    /const wasmPathPrefix = `https:\/\/cdn\.jsdelivr\.net[^`]*`;/g,
-    'const wasmPathPrefix = "";'
-  );
-  fs.writeFileSync(offscreenPath, offscreenCode);
-  console.log('  ✓ offscreen/offscreen.js (CDN stripped)');
+  let code = fs.readFileSync(offscreenPath, 'utf8');
+  code = patchOffscreenCode(code);
+  fs.writeFileSync(offscreenPath, code);
+  console.log('  ✓ offscreen/offscreen.js (import_meta.url fixed, CDN stripped)');
 
-  // Copy WASM files from node_modules to offscreen directory
+  // Copy ORT WASM files
   const ortDist = path.join(ROOT_DIR, 'node_modules', 'onnxruntime-web', 'dist');
   const ortFiles = ['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.mjs'];
   for (const file of ortFiles) {
@@ -99,7 +134,15 @@ async function bundleScripts() {
     }
   }
 
-  console.log('✓ All scripts bundled');
+  // Copy Tesseract.js worker file
+  const tesseractWorker = path.join(ROOT_DIR, 'node_modules', 'tesseract.js', 'dist', 'worker.min.js');
+  const tesseractDest = path.join(DIST_DIR, 'offscreen', 'tesseract-worker.min.js');
+  if (fs.existsSync(tesseractWorker)) {
+    fs.copyFileSync(tesseractWorker, tesseractDest);
+    console.log('  ✓ offscreen/tesseract-worker.min.js');
+  }
+
+  console.log('\n✓ All scripts bundled');
 }
 
 function copyManifest() {
@@ -109,9 +152,6 @@ function copyManifest() {
   console.log('✓ Copied manifest.json');
 }
 
-/**
- * Copy HTML and CSS files (non-TypeScript)
- */
 function copyStaticFiles() {
   const htmlCssFiles = [
     { src: 'ui/sidepanel/sidepanel.html', dest: 'ui/sidepanel/sidepanel.html' },
@@ -144,7 +184,6 @@ function createPlaceholderIcons() {
   console.log('✓ Created placeholder icons');
 }
 
-// Main build
 async function main() {
   console.log('Building Hermes Extension...\n');
 

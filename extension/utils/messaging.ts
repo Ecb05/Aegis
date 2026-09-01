@@ -24,8 +24,10 @@ export type MessageType =
   | 'OFFSCREEN_INIT'
   | 'OFFSCREEN_CLASSIFY'
   | 'OFFSCREEN_DETECT'
+  | 'OFFSCREEN_OCR'
   | 'OFFSCREEN_EMBED'
-  | 'OFFSCREEN_PERCEIVE';
+  | 'OFFSCREEN_PERCEIVE'
+  | 'OCR_RESULT';
 
 export interface HermesMessage {
   type: MessageType;
@@ -141,8 +143,23 @@ export interface ActionResult {
 export interface PerceptionResult {
   classification: ClassificationResult[];
   detection: DetectedElement[];
+  ocr?: OCRResult;
   fusion?: FusionResult;
+  device?: string;
+  elapsed?: number;
   timestamp: number;
+}
+
+export interface OCRResult {
+  fullText: string;
+  textBlocks: OCRTextBlock[];
+  confidence: number;
+}
+
+export interface OCRTextBlock {
+  text: string;
+  confidence: number;
+  bbox: BoundingBox;
 }
 
 export interface ClassificationResult {
