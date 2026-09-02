@@ -624,4 +624,119 @@ function displayPrivacyResults(result: any): void {
   }
 }
 
+// ─── Run Agent (Call Server) ──────────────────────────────
+
+const runAgentBtn = document.getElementById('run-agent-btn') as HTMLButtonElement;
+const executeAgentBtn = document.getElementById('execute-agent-btn') as HTMLButtonElement;
+const agentPanel = document.getElementById('agent-panel')!;
+const agentAction = document.getElementById('agent-action')!;
+const agentTarget = document.getElementById('agent-target')!;
+const agentParams = document.getElementById('agent-params')!;
+const agentReasoning = document.getElementById('agent-reasoning')!;
+const agentDone = document.getElementById('agent-done')!;
+const agentSession = document.getElementById('agent-session')!;
+
+let lastAgentAction: any = null;
+
+runAgentBtn.addEventListener('click', async () => {
+  if (!currentState) {
+    setStatus('No page state — inspect first', 'error');
+    return;
+  }
+
+  const task = taskInput.value || 'General browsing';
+  const mode = privacyModeSelect.value as 'standard' | 'strict' | 'local-only';
+
+  setStatus('Sanitizing + calling server...', 'loading');
+  runAgentBtn.disabled = true;
+
+  try {
+    // Step 1: Sanitize
+    const sanitizeResponse = await sendAndWait('SANITIZE', {
+      browserState: currentState,
+      task,
+      mode,
+    }, 30000);
+
+    const sanitizedState = sanitizeResponse.payload.sanitizedState;
+    displayPrivacyResults(sanitizeResponse.payload);
+
+    // Show the exact payload being sent to the server
+    const payloadPanel = document.getElementById('payload-panel')!;
+    const payloadOutput = document.getElementById('payload-output')!;
+    showSection('payload-panel', true);
+    payloadOutput.textContent = JSON.stringify({ sanitizedState, task, step: 0 }, null, 2);
+
+    // Step 2: Call server
+    const serverUrl = 'http://localhost:8000';
+    const stepResponse = await fetch(`${serverUrl}/agent/step`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sanitizedState,
+        task,
+        step: 0,
+      }),
+    });
+
+    if (!stepResponse.ok) {
+      throw new Error(`Server returned ${stepResponse.status}: ${await stepResponse.text()}`);
+    }
+
+    const agentResult = await stepResponse.json();
+    lastAgentAction = agentResult;
+
+    // Display agent response
+    showSection('agent-panel', true);
+    agentAction.textContent = agentResult.action?.action || '—';
+    agentTarget.textContent = agentResult.action?.target || '—';
+    agentParams.textContent = agentResult.action?.params
+      ? JSON.stringify(agentResult.action.params)
+      : '—';
+    agentReasoning.textContent = agentResult.reasoning || '—';
+    agentDone.textContent = agentResult.done ? '✅ Yes' : '❌ No';
+    agentSession.textContent = agentResult.sessionId || '—';
+
+    setStatus('Agent responded', 'success');
+  } catch (err) {
+    console.error('[Hermes] Agent failed:', err);
+    setStatus(`Agent failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  } finally {
+    runAgentBtn.disabled = false;
+  }
+});
+
+// Execute the action returned by the server
+executeAgentBtn.addEventListener('click', async () => {
+  if (!lastAgentAction?.action) {
+    setStatus('No action to execute', 'error');
+    return;
+  }
+
+  const action = lastAgentAction.action;
+  setStatus(`Executing: ${action.action}...`, 'loading');
+  executeAgentBtn.disabled = true;
+
+  try {
+    const response = await sendAndWait('EXECUTE_ACTION', {
+      action: action.action,
+      target: action.target,
+      params: action.params,
+    }, 30000);
+
+    const result = response.payload;
+    if (result.success) {
+      setStatus(`Executed: ${action.action}`, 'success');
+      // Re-inspect after action
+      setTimeout(() => inspectPage(), 1000);
+    } else {
+      setStatus(`Failed: ${result.error}`, 'error');
+    }
+  } catch (err) {
+    setStatus(`Execute failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  } finally {
+    executeAgentBtn.disabled = false;
+  }
+});
+
 console.log('[Hermes] Side panel v8 loaded');

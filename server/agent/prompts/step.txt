@@ -1,0 +1,22 @@
+## Current Task
+{task}
+
+## Current Step
+Step {step} of max {max_steps}
+
+## Page Elements
+{elements_json}
+
+## Page Info
+- Title: {page_title}
+- URL: {page_url}
+- Domain: {page_domain}
+
+## Privacy Stats
+- Total elements: {total_elements}
+- Passed: {passed} | Pseudonymized: {pseudonymized} | Redacted: {redacted} | Omitted: {omitted} | Protected: {protected}
+
+{last_action_section}
+
+## Instructions
+Produce the NEXT SINGLE ACTION as JSON. Think step by step about what needs to happen to complete the task, then output ONE action.

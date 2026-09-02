@@ -91,6 +91,37 @@
         <option value="local-only">Local Only</option>
       </select>
       <input type="text" id="task-input" placeholder="Enter task description..." class="task-input">
+      <button id="run-agent-btn" class="btn btn-primary" style="margin-top:8px">🚀 Run Agent</button>
+    </div>
+
+    <!-- Agent Response -->
+    <div id="agent-panel" class="section hidden">
+      <h3>Agent Response</h3>
+      <div class="info-row">
+        <span class="info-label">Action:</span>
+        <span id="agent-action" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Target:</span>
+        <span id="agent-target" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Params:</span>
+        <span id="agent-params" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Reasoning:</span>
+        <span id="agent-reasoning" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Done:</span>
+        <span id="agent-done" class="info-value">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Session:</span>
+        <span id="agent-session" class="info-value">—</span>
+      </div>
+      <button id="execute-agent-btn" class="btn btn-primary" style="margin-top:8px">⚡ Execute Action</button>
     </div>
 
     <!-- Privacy Results -->
@@ -175,6 +206,12 @@
     <div id="json-panel" class="section hidden">
       <h3>Browser State (JSON)</h3>
       <pre id="json-output" class="json-output"></pre>
+    </div>
+
+    <!-- Server Payload Panel -->
+    <div id="payload-panel" class="section hidden">
+      <h3>Server Payload (Sanitized)</h3>
+      <pre id="payload-output" class="json-output"></pre>
     </div>
   </div>
 
