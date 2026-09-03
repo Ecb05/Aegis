@@ -1,0 +1,29 @@
+:root {
+  --md-text-font: "Inter", "Segoe UI", sans-serif;
+  --md-code-font: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.md-header__title { font-weight: 700; }
+.md-typeset h1 { font-weight: 750; letter-spacing: -0.025em; }
+.md-typeset h2 { font-weight: 700; letter-spacing: -0.015em; }
+.md-typeset code { border-radius: .25rem; }
+.md-typeset .grid.cards > ul > li { border-radius: .7rem; }
+
+.aegis-hero {
+  padding: 1.5rem 0 1rem;
+}
+.aegis-hero h1 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1.02;
+  margin-bottom: .7rem;
+}
+.aegis-hero p {
+  font-size: 1.15rem;
+  max-width: 50rem;
+}
+.metric-placeholder {
+  border: 1px dashed var(--md-default-fg-color--lighter);
+  border-radius: .6rem;
+  padding: .8rem 1rem;
+  background: var(--md-code-bg-color);
+}

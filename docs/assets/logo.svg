@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Aegis logo">
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#111827"/>
+  <path d="M64 24 102 39v25c0 24-15 43-38 52C41 107 26 88 26 64V39l38-15Z" fill="#6366f1"/>
+  <path d="m64 40 22 53H75l-5-13H48l-5 13H32l22-53h10Zm2 30-7-18-7 18h14Z" fill="white"/>
+</svg>
