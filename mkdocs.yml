@@ -1,0 +1,140 @@
+site_name: Aegis
+site_description: Privacy-preserving on-device visual perception for lightweight browser agents
+site_author: Aegis Team
+copyright: Aegis · Smart India Hackathon 2026
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  features:
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Overview: getting-started/overview.md
+      - Installation: getting-started/installation.md
+      - Run the extension: getting-started/running-extension.md
+      - Run the server: getting-started/running-server.md
+      - First agent task: getting-started/first-task.md
+  - Concepts:
+      - Browser agents: concepts/browser-agents.md
+      - On-device perception: concepts/on-device-perception.md
+      - Privacy boundary: concepts/privacy-boundary.md
+      - Sanitized context: concepts/sanitized-context.md
+      - Agent loop: concepts/agent-loop.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - System components: architecture/system-components.md
+      - Data flow: architecture/data-flow.md
+      - Extension runtime: architecture/extension-runtime.md
+      - Perception pipeline: architecture/perception-pipeline.md
+      - Privacy pipeline: architecture/privacy-pipeline.md
+      - Server & agent: architecture/server-agent.md
+  - Perception:
+      - Overview: perception/overview.md
+      - DOM extraction: perception/dom-extraction.md
+      - Screenshot capture: perception/screenshot-capture.md
+      - Local models: perception/local-models.md
+      - OCR: perception/ocr.md
+      - DOM + vision fusion: perception/fusion.md
+  - Privacy:
+      - Overview: privacy/overview.md
+      - Detection cascade: privacy/detection-cascade.md
+      - Sensitivity: privacy/sensitivity.md
+      - Task relevance: privacy/task-relevance.md
+      - Pseudonymization: privacy/pseudonymization.md
+      - Redaction & proxying: privacy/redaction.md
+      - Privacy modes: privacy/privacy-modes.md
+  - Agent:
+      - Overview: agent/overview.md
+      - Reasoning server: agent/reasoning-server.md
+      - Action protocol: agent/action-protocol.md
+      - Execution loop: agent/execution-loop.md
+      - Sessions: agent/sessions.md
+  - Reference:
+      - Browser state: reference/browser-state.md
+      - Sanitized state: reference/sanitized-state.md
+      - Action schema: reference/action-schema.md
+      - HTTP API: reference/api.md
+      - Extension messages: reference/messages.md
+      - Configuration: reference/configuration.md
+  - Evaluation:
+      - Overview: evaluation/overview.md
+      - Visual-context accuracy: evaluation/visual-context-accuracy.md
+      - PII detection: evaluation/pii-detection.md
+      - Redaction precision: evaluation/redaction-precision.md
+      - Resource utilization: evaluation/resource-utilization.md
+      - End-to-end latency: evaluation/latency.md
+      - Benchmark worksheet: evaluation/benchmark-template.md
+  - Demo:
+      - Walkthrough: demo/walkthrough.md
+      - Request lifecycle: demo/request-lifecycle.md
+  - Development:
+      - Codebase guide: development/codebase-guide.md
+      - Design decisions: development/design-decisions.md
+      - Contributing: development/contributing.md
+      - Roadmap: development/roadmap.md
+  - FAQ: faq.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  generator: false
+  social: []
