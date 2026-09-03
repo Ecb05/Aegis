@@ -23,24 +23,35 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   if (changeInfo.status === 'complete') {
     activeTabId = tabId;
   }
-});
+});  // Port connection from side panel
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === 'hermes-sidepanel') {
+      sidePanelPort = port;
+      console.log('[Hermes] Side panel connected via port');
 
-// Port connection from side panel
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === 'hermes-sidepanel') {
-    sidePanelPort = port;
-    console.log('[Hermes] Side panel connected');
+      port.onDisconnect.addListener(() => {
+        console.log('[Hermes] Side panel disconnected');
+        sidePanelPort = null;
+      });
 
-    port.onDisconnect.addListener(() => {
-      console.log('[Hermes] Side panel disconnected');
-      sidePanelPort = null;
-    });
-
-    port.onMessage.addListener(async (message) => {
-      await handleFromSidePanel(message, port);
-    });
-  }
-});
+      port.onMessage.addListener(async (message) => {
+        console.log('[Hermes] Port message received:', message.type);
+        try {
+          await handleFromSidePanel(message, port);
+        } catch (err) {
+          console.error('[Hermes] handleFromSidePanel threw:', err);
+          try {
+            port.postMessage({
+              type: 'ERROR',
+              payload: { message: 'Internal error: ' + String(err) },
+              source: 'background',
+              timestamp: Date.now(),
+            });
+          } catch {}
+        }
+      });
+    }
+  });
 
 // Handle messages from content scripts — forward to side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -75,10 +86,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   sendResponse({ ok: true });
 });
 
+// Get the active tab ID, with fallback to chrome.tabs.query
+async function getActiveTabId(): Promise<number | null> {
+  if (activeTabId) {
+    // Verify the tab still exists
+    try {
+      await chrome.tabs.get(activeTabId);
+      return activeTabId;
+    } catch {
+      // Tab was closed, clear stale reference
+      activeTabId = null;
+    }
+  }
+
+  // Fallback: query for the active tab in the current window
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      activeTabId = tab.id;
+      console.log('[Hermes] Resolved active tab via query:', tab.id);
+      return tab.id;
+    }
+  } catch (err) {
+    console.error('[Hermes] Tab query failed:', err);
+  }
+
+  return null;
+}
+
 // Handle messages from side panel
 async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
-  const tabId = activeTabId;
+  const tabId = await getActiveTabId();
   console.log('[Hermes] From side panel:', message.type, 'tab:', tabId);
+
+  if (!tabId) {
+    console.error('[Hermes] No active tab available');
+    port.postMessage({
+      type: 'ERROR',
+      payload: { message: 'No active tab — navigate to a page first, then click the Hermes icon' },
+      source: 'background',
+      timestamp: Date.now(),
+    });
+    return;
+  }
 
   // Handle offscreen document management
   if (message.type === 'ENSURE_OFFSCREEN') {
@@ -281,39 +331,65 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     return;
   }
 
-  // Ensure content script is injected
-  try {
-    await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-  } catch {
+  // Ensure content script is injected (with retries)
+  let injected = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/content.js'] });
-      await new Promise(r => setTimeout(r, 200));
-    } catch (err) {
-      port.postMessage({
-        type: 'ERROR',
-        payload: { message: 'Could not inject content script: ' + String(err) },
-        source: 'background',
-        timestamp: Date.now(),
-      });
-      return;
+      console.log(`[Hermes] Pinging content script on tab ${tabId}...`);
+      const pong = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+      console.log('[Hermes] PING response:', pong);
+      injected = true;
+      break;
+    } catch (pingErr) {
+      console.warn(`[Hermes] PING failed (attempt ${attempt + 1}):`, pingErr);
+      // Content script not ready — inject it
+      try {
+        console.log(`[Hermes] Injecting content script (attempt ${attempt + 1})...`);
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['content/content.js'] });
+        await new Promise(r => setTimeout(r, 500));
+        const pong = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+        console.log('[Hermes] Post-inject PING response:', pong);
+        injected = true;
+        break;
+      } catch (injectErr) {
+        console.warn(`[Hermes] Injection attempt ${attempt + 1} failed:`, injectErr);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+      }
     }
   }
 
-  // Forward to content script
+  if (!injected) {
+    console.error('[Hermes] Content script injection failed after 3 attempts');
+    port.postMessage({
+      type: 'ERROR',
+      payload: { message: 'Could not inject content script after 3 attempts. Try refreshing the page.' },
+      source: 'background',
+      timestamp: Date.now(),
+    });
+    return;
+  }
+
+  // Forward to content script and wait for response
   try {
-    chrome.tabs.sendMessage(tabId, message).catch(err => {
-      console.error('[Hermes] Send to content failed:', err);
+    console.log(`[Hermes] Sending ${message.type} to tab ${tabId}...`);
+    const response = await chrome.tabs.sendMessage(tabId, message);
+    console.log(`[Hermes] Got response from content:`, response?.type);
+    if (response) {
+      port.postMessage(response);
+    } else {
+      console.warn('[Hermes] Content script returned null/undefined response');
       port.postMessage({
         type: 'ERROR',
-        payload: { message: String(err) },
+        payload: { message: 'Content script returned empty response' },
         source: 'background',
         timestamp: Date.now(),
       });
-    });
+    }
   } catch (err) {
+    console.error('[Hermes] Send to content failed:', err);
     port.postMessage({
       type: 'ERROR',
-      payload: { message: String(err) },
+      payload: { message: 'Content script communication failed: ' + String(err) },
       source: 'background',
       timestamp: Date.now(),
     });

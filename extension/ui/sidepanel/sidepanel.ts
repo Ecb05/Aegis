@@ -77,7 +77,15 @@ function connectPort(): void {
   port.onDisconnect.addListener(() => {
     console.log('[Hermes] Disconnected from background');
     port = null;
-    setTimeout(connectPort, 500);
+    // Fail any pending request so the caller knows the connection dropped
+    if (pendingReject) {
+      if (timeoutId) clearTimeout(timeoutId);
+      const rejectFn = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      rejectFn(new Error('Connection to background lost — retrying...'));
+    }
+    setTimeout(connectPort, 1000);
   });
 }
 
@@ -92,8 +100,18 @@ function reject(err: Error): void {
 
 connectPort();
 
-function sendAndWait(type: string, payload: any, timeoutMs: number = 30000): Promise<any> {
+function sendAndWait(type: string, payload: any, timeoutMs: number = 60000): Promise<any> {
   return new Promise((resolve, reject) => {
+    // Auto-reconnect if port is dead
+    if (!port) {
+      try {
+        connectPort();
+      } catch {
+        reject(new Error('Could not connect to background'));
+        return;
+      }
+    }
+
     if (!port) {
       reject(new Error('Not connected to background'));
       return;
@@ -377,21 +395,33 @@ async function inspectPage(): Promise<void> {
   setStatus('Inspecting...', 'loading');
   inspectBtn.disabled = true;
 
-  try {
-    const response = await sendAndWait('INSPECT_PAGE', {});
-    if (response.type === 'PAGE_STATE') {
-      const state = response.payload as BrowserState;
-      currentState = state;
-      displayState(state);
-      setStatus(`Found ${state.elements.length} DOM elements`, 'success');
-    } else {
-      setStatus(`Unexpected response: ${response.type}`, 'error');
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      if (attempt > 1) {
+        setStatus(`Retry ${attempt}/3...`, 'loading');
+        await autoSleep(1000 * attempt);
+      }
+      const response = await sendAndWait('INSPECT_PAGE', {}, 30000);
+      if (response.type === 'PAGE_STATE') {
+        const state = response.payload as BrowserState;
+        currentState = state;
+        displayState(state);
+        setStatus(`Found ${state.elements.length} DOM elements`, 'success');
+        inspectBtn.disabled = false;
+        return;
+      } else {
+        setStatus(`Unexpected response: ${response.type}`, 'loading');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < 3) {
+        setStatus(`Attempt ${attempt} failed: ${msg} — retrying...`, 'loading');
+      } else {
+        setStatus(`Inspect failed after 3 attempts: ${msg}`, 'error');
+      }
     }
-  } catch (err) {
-    setStatus(`Failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-  } finally {
-    inspectBtn.disabled = false;
   }
+  inspectBtn.disabled = false;
 }
 
 async function perceivePage(): Promise<void> {
@@ -737,6 +767,241 @@ executeAgentBtn.addEventListener('click', async () => {
   } finally {
     executeAgentBtn.disabled = false;
   }
+});
+
+// ─── Autonomous Agent Loop ──────────────────────────────
+
+const autoStartBtn = document.getElementById('auto-start-btn') as HTMLButtonElement;
+const autoStopBtn = document.getElementById('auto-stop-btn') as HTMLButtonElement;
+const autoStepNum = document.getElementById('auto-step-num')!;
+const autoMaxSteps = document.getElementById('auto-max-steps') as HTMLInputElement;
+const autoLog = document.getElementById('auto-log')!;
+
+let autoRunning = false;
+let autoAbortController: AbortController | null = null;
+let autoSessionId: string | null = null;
+
+function addAutoLog(
+  step: number,
+  type: 'inspect' | 'sanitize' | 'plan' | 'execute' | 'done' | 'error',
+  text: string,
+  reasoning?: string
+): void {
+  const entry = document.createElement('div');
+  entry.className = `auto-log-entry step-${type}`;
+  entry.innerHTML = `
+    <span class="auto-log-num">${step}</span>
+    <div class="auto-log-text">
+      <div class="auto-log-action">${escapeHtml(text)}</div>
+      ${reasoning ? `<div class="auto-log-reasoning">${escapeHtml(reasoning)}</div>` : ''}
+    </div>
+  `;
+  autoLog.appendChild(entry);
+  autoLog.scrollTop = autoLog.scrollHeight;
+}
+
+function setAutoRunning(running: boolean): void {
+  autoRunning = running;
+  autoStartBtn.classList.toggle('hidden', running);
+  autoStopBtn.classList.toggle('hidden', !running);
+  autoStartBtn.disabled = running;
+  autoStopBtn.disabled = !running;
+  inspectBtn.disabled = running;
+  perceiveBtn.disabled = running;
+  fuseBtn.disabled = running;
+  sanitizeBtn.disabled = running;
+  runAgentBtn.disabled = running;
+  executeBtn.disabled = running;
+  executeAgentBtn.disabled = running;
+}
+
+async function autoSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runAutoLoop(): Promise<void> {
+  const maxSteps = parseInt(autoMaxSteps.value, 10) || 10;
+  const task = taskInput.value || 'General browsing';
+  const mode = privacyModeSelect.value as 'standard' | 'strict' | 'local-only';
+
+  setAutoRunning(true);
+  autoLog.innerHTML = '';
+  autoSessionId = null;
+  autoStepNum.textContent = '0';
+
+  addAutoLog(0, 'plan', `Starting autonomous loop: "${task}"`, `Max ${maxSteps} steps, mode: ${mode}`);
+
+  const serverUrl = 'http://localhost:8000';
+  let lastActionResult: any = null;
+
+  for (let step = 0; step < maxSteps && autoRunning; step++) {
+    autoStepNum.textContent = String(step + 1);
+
+    // ─── Step 1: Inspect ───────────────────────
+    addAutoLog(step + 1, 'inspect', 'Inspecting page...');
+
+    let inspected = false;
+    for (let retry = 0; retry < 3 && autoRunning; retry++) {
+      try {
+        if (retry > 0) {
+          addAutoLog(step + 1, 'inspect', `Retry ${retry}/3...`);
+          await autoSleep(1000 * retry);
+        }
+        const inspectResp = await sendAndWait('INSPECT_PAGE', {}, 30000);
+        if (inspectResp.type !== 'PAGE_STATE') {
+          addAutoLog(step + 1, 'error', `Inspect got unexpected response: ${inspectResp.type}`);
+          continue;
+        }
+        currentState = inspectResp.payload as BrowserState;
+        displayState(currentState);
+        addAutoLog(step + 1, 'inspect', `Found ${currentState.elements.length} elements`);
+        inspected = true;
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (retry < 2) {
+          addAutoLog(step + 1, 'inspect', `Attempt ${retry + 1} failed: ${msg} — retrying...`);
+        } else {
+          addAutoLog(step + 1, 'error', `Inspect failed after 3 attempts: ${msg}`);
+        }
+      }
+    }
+    if (!inspected) break;
+
+    if (!autoRunning) break;
+
+    // ─── Step 2: Sanitize ──────────────────────
+    addAutoLog(step + 1, 'sanitize', 'Sanitizing...');
+
+    let sanitizedState: any;
+    try {
+      const sanitizeResp = await sendAndWait('SANITIZE', {
+        browserState: currentState,
+        task,
+        mode,
+      }, 30000);
+      sanitizedState = sanitizeResp.payload.sanitizedState;
+      displayPrivacyResults(sanitizeResp.payload);
+      addAutoLog(step + 1, 'sanitize', `Stats: ${sanitizedState.stats.passed} pass, ${sanitizedState.stats.pseudonymized} pseudo, ${sanitizedState.stats.redacted} redact`);
+    } catch (err) {
+      addAutoLog(step + 1, 'error', `Sanitize failed: ${err instanceof Error ? err.message : String(err)}`);
+      break;
+    }
+
+    if (!autoRunning) break;
+
+    // ─── Step 3: Call Server ────────────────────
+    addAutoLog(step + 1, 'plan', 'Calling server...');
+
+    let agentResult: any;
+    try {
+      const stepResponse = await fetch(`${serverUrl}/agent/step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sanitizedState,
+          task,
+          step,
+          lastAction: lastActionResult,
+          sessionId: autoSessionId,
+        }),
+      });
+
+      if (!stepResponse.ok) {
+        throw new Error(`Server ${stepResponse.status}: ${await stepResponse.text()}`);
+      }
+
+      agentResult = await stepResponse.json();
+      autoSessionId = agentResult.sessionId;
+      lastActionResult = null; // Reset for next step
+
+      addAutoLog(
+        step + 1,
+        'plan',
+        `Action: ${agentResult.action?.action} → ${agentResult.action?.target || 'none'}`,
+        agentResult.reasoning
+      );
+
+      // Update agent panel
+      showSection('agent-panel', true);
+      agentAction.textContent = agentResult.action?.action || '—';
+      agentTarget.textContent = agentResult.action?.target || '—';
+      agentParams.textContent = agentResult.action?.params ? JSON.stringify(agentResult.action.params) : '—';
+      agentReasoning.textContent = agentResult.reasoning || '—';
+      agentDone.textContent = agentResult.done ? '✅ Yes' : '❌ No';
+      agentSession.textContent = agentResult.sessionId || '—';
+    } catch (err) {
+      addAutoLog(step + 1, 'error', `Server call failed: ${err instanceof Error ? err.message : String(err)}`);
+      break;
+    }
+
+    // Check if done
+    if (agentResult.done) {
+      addAutoLog(step + 1, 'done', `✅ Task complete: ${agentResult.message || 'Done'}`);
+      setStatus('Task complete!', 'success');
+      break;
+    }
+
+    if (!autoRunning) break;
+
+    // ─── Step 4: Execute ───────────────────────
+    const action = agentResult.action;
+    if (!action?.action) {
+      addAutoLog(step + 1, 'error', 'No action returned from server');
+      break;
+    }
+
+    addAutoLog(step + 1, 'execute', `Executing: ${action.action}${action.target ? ' → ' + action.target : ''}`);
+
+    try {
+      const execResp = await sendAndWait('EXECUTE_ACTION', {
+        action: action.action,
+        target: action.target,
+        params: action.params,
+      }, 30000);
+
+      const execResult = execResp.payload;
+      lastActionResult = {
+        success: execResult.success,
+        action: action.action,
+        target: action.target,
+        error: execResult.error,
+      };
+
+      if (execResult.success) {
+        addAutoLog(step + 1, 'execute', `✅ ${action.action} succeeded`);
+      } else {
+        addAutoLog(step + 1, 'error', `❌ ${action.action} failed: ${execResult.error}`);
+      }
+    } catch (err) {
+      addAutoLog(step + 1, 'error', `Execute failed: ${err instanceof Error ? err.message : String(err)}`);
+      lastActionResult = { success: false, action: action.action, target: action.target, error: String(err) };
+    }
+
+    if (!autoRunning) break;
+
+    // Wait for page to settle
+    await autoSleep(1500);
+  }
+
+  if (autoRunning) {
+    // Loop finished naturally (max steps or done)
+    const finalStep = parseInt(autoStepNum.textContent || '0', 10);
+    addAutoLog(finalStep, 'done', 'Loop finished');
+  }
+
+  setAutoRunning(false);
+}
+
+autoStartBtn.addEventListener('click', () => {
+  runAutoLoop();
+});
+
+autoStopBtn.addEventListener('click', () => {
+  autoRunning = false;
+  addAutoLog(0, 'error', '⏹ Stopped by user');
+  setAutoRunning(false);
+  setStatus('Auto mode stopped', 'error');
 });
 
 console.log('[Hermes] Side panel v8 loaded');

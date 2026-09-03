@@ -438,6 +438,136 @@ body {
   color: #90caf9;
 }
 
+/* Auto Mode */
+.auto-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.auto-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-danger {
+  background: #c62828;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #b71c1c;
+}
+
+.auto-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #b0b3b8;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auto-step-label {
+  color: #8a8d91;
+}
+
+#auto-step-num {
+  color: #64b5f6;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.auto-separator {
+  color: #8a8d91;
+}
+
+.auto-max-input {
+  width: 50px;
+  padding: 2px 6px;
+  background: #3a3b3c;
+  border: 1px solid #4a4b4c;
+  border-radius: 4px;
+  color: #e4e6eb;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auto-log {
+  margin-top: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-log:empty {
+  display: none;
+}
+
+.auto-log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #1a1b1e;
+  border-radius: 4px;
+  font-size: 12px;
+  border-left: 3px solid #3a3b3c;
+}
+
+.auto-log-entry.step-inspect {
+  border-left-color: #4f46e5;
+}
+
+.auto-log-entry.step-sanitize {
+  border-left-color: #ff9800;
+}
+
+.auto-log-entry.step-plan {
+  border-left-color: #64b5f6;
+}
+
+.auto-log-entry.step-execute {
+  border-left-color: #66bb6a;
+}
+
+.auto-log-entry.step-done {
+  border-left-color: #66bb6a;
+  background: #1a3c2a;
+}
+
+.auto-log-entry.step-error {
+  border-left-color: #ef5350;
+  background: #3c1a1a;
+}
+
+.auto-log-num {
+  color: #8a8d91;
+  font-weight: 600;
+  min-width: 20px;
+}
+
+.auto-log-text {
+  flex: 1;
+  color: #e4e6eb;
+  line-height: 1.4;
+}
+
+.auto-log-action {
+  color: #64b5f6;
+  font-family: monospace;
+}
+
+.auto-log-reasoning {
+  color: #8a8d91;
+  font-style: italic;
+  margin-top: 2px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

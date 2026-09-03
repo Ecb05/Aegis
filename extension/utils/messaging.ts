@@ -30,7 +30,9 @@ export type MessageType =
   | 'OCR_RESULT'
   // Privacy types
   | 'SANITIZE'
-  | 'SANITIZE_RESULT';
+  | 'SANITIZE_RESULT'
+  // Agent types
+  | 'STOP_AGENT';
 
 export interface HermesMessage {
   type: MessageType;

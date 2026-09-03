@@ -91,7 +91,23 @@
         <option value="local-only">Local Only</option>
       </select>
       <input type="text" id="task-input" placeholder="Enter task description..." class="task-input">
-      <button id="run-agent-btn" class="btn btn-primary" style="margin-top:8px">🚀 Run Agent</button>
+      <button id="run-agent-btn" class="btn btn-primary" style="margin-top:8px">🚀 Run Agent (Single Step)</button>
+    </div>
+
+    <!-- Auto Mode -->
+    <div class="section">
+      <h3>🤖 Autonomous Mode</h3>
+      <div class="auto-controls">
+        <button id="auto-start-btn" class="btn btn-primary auto-btn">▶️ Start Auto</button>
+        <button id="auto-stop-btn" class="btn btn-danger auto-btn hidden">⏹ Stop</button>
+        <div class="auto-progress">
+          <span class="auto-step-label">Step:</span>
+          <span id="auto-step-num">0</span>
+          <span class="auto-separator">/</span>
+          <input type="number" id="auto-max-steps" value="10" min="1" max="50" class="auto-max-input">
+        </div>
+      </div>
+      <div id="auto-log" class="auto-log"></div>
     </div>
 
     <!-- Agent Response -->

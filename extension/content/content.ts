@@ -42,30 +42,29 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    // For INSPECT_PAGE / GET_STATE: extract and send back via runtime.sendMessage
+    // For INSPECT_PAGE / GET_STATE: extract and send back via sendResponse
     if (message.type === 'INSPECT_PAGE' || message.type === 'GET_STATE') {
+      console.log('[Hermes] Content: processing INSPECT_PAGE...');
       try {
         const state = buildBrowserState();
-        console.log('[Hermes] Found', state.elements.length, 'elements');
+        console.log('[Hermes] Content: found', state.elements.length, 'elements, sending PAGE_STATE');
         const response: HermesMessage = {
           type: 'PAGE_STATE',
           payload: state,
           source: 'content',
           timestamp: Date.now(),
         };
-        // Send via both paths for reliability
         sendResponse(response);
-        chrome.runtime.sendMessage(response).catch(() => {});
+        console.log('[Hermes] Content: sendResponse called successfully');
       } catch (err) {
-        console.error('[Hermes] Error:', err);
+        console.error('[Hermes] Content: INSPECT_PAGE error:', err);
         const response: HermesMessage = {
           type: 'ERROR',
-          payload: { message: String(err) },
+          payload: { message: 'Content script error: ' + String(err) },
           source: 'content',
           timestamp: Date.now(),
         };
         sendResponse(response);
-        chrome.runtime.sendMessage(response).catch(() => {});
       }
       return true;
     }

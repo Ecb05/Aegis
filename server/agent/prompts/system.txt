@@ -59,9 +59,35 @@ When the task is complete:
 }
 ```
 
+## Example: Filling a form
+
+Given this state:
+```json
+[
+  {"id": "input_0", "role": "textbox", "label": "Patient Name", "value": "<PERSON_1>", "treatment": "pseudonymize"},
+  {"id": "input_1", "role": "textbox", "label": "Email Address", "value": "<EMAIL_1>", "treatment": "pseudonymize"},
+  {"id": "input_2", "role": "textbox", "label": "Phone Number", "treatment": "pass"},
+  {"id": "button_0", "role": "button", "label": "Book Appointment", "treatment": "pass"}
+]
+```
+And task: "Book appointment for Rahul at rahul@gmail.com"
+
+Step 1 response:
+```json
+{"action": "type", "target": "input_2", "params": {"text": "+91 98765 43210"}, "reasoning": "Patient Name and Email are pre-filled (pseudonymized). Typing the phone number into the empty Phone field."}
+```
+
+Step 2 response (after phone is filled):
+```json
+{"action": "click", "target": "button_0", "params": {}, "reasoning": "All required fields are filled. Clicking Book Appointment to submit.", "done": true, "message": "Appointment booked successfully."}
+```
+
 ## Important
 
 - ALWAYS output valid JSON. No markdown, no explanations outside the JSON.
 - ALWAYS include the `reasoning` field explaining your decision.
 - Look at element labels and roles to understand the page structure.
 - If the task mentions a specific value (like an email), check if there's a token reference (e.g., `<EMAIL_1>`) in the state — use it in your action.
+- For pseudonymized values (treatment: "pseudonymize"), the value shown IS the token — use it directly.
+- For empty fields with treatment: "pass", fill them with values from the task description.
+- After all fields are filled, click the submit button and set done: true.

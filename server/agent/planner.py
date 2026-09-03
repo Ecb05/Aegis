@@ -197,12 +197,13 @@ async def plan_next_action(
 
 
 def mock_response(user_prompt: str) -> str:
-    """Mock LLM response for testing without an API key.
-    Analyzes the elements and produces a reasonable action.
+    """Fallback mock for testing without any LLM.
+    Produces a basic action from the first interactive element.
     """
+    import re
+
     # Parse the elements from the prompt
     try:
-        # Find the elements JSON in the prompt
         start = user_prompt.find("[")
         end = user_prompt.find("]", user_prompt.find("Page Elements")) + 1
         if start >= 0 and end > start:
@@ -218,64 +219,32 @@ def mock_response(user_prompt: str) -> str:
     if task_start >= 0:
         task = user_prompt[task_start + 17 : user_prompt.find("\n", task_start + 17)]
 
-    # Simple heuristic: find the first text input and type something,
-    # or find a submit button and click it
+    # Simple: find first clickable/textable element and return it
     for el in elements:
         role = el.get("role", "")
-        label = el.get("label", "").lower()
         treatment = el.get("treatment", "")
-
-        # Skip omitted/redacted elements
         if treatment in ("omit", "redact"):
             continue
-
-        # Find text inputs for the task
-        if role == "textbox" and treatment in ("pass", "pseudonymize"):
-            text_to_type = _guess_input_value(label, task)
+        if role == "textbox":
             return json.dumps({
                 "action": "type",
                 "target": el["id"],
-                "params": {"text": text_to_type},
-                "reasoning": f"Typing '{text_to_type}' into {el.get('label', el['id'])} field.",
+                "params": {"text": "test"},
+                "reasoning": f"[mock] Typing into {el.get('label', el['id'])}.",
             })
-
-        # Find submit buttons
-        if role == "button" and ("submit" in label or "book" in label or "send" in label or "save" in label):
+        if role == "button":
             return json.dumps({
                 "action": "click",
                 "target": el["id"],
                 "params": {},
-                "reasoning": f"Clicking '{el.get('label', el['id'])}' to submit the form.",
+                "reasoning": f"[mock] Clicking {el.get('label', el['id'])}.",
                 "done": True,
-                "message": f"Task complete: clicked {el.get('label', 'submit button')}.",
             })
 
-    # Default: scroll down to see more
     return json.dumps({
-        "action": "scroll",
+        "action": "wait",
         "target": None,
-        "params": {"direction": "down", "amount": 300},
-        "reasoning": "Scrolling down to see more page elements.",
+        "params": {"duration": 1000},
+        "reasoning": "[mock] No actionable elements found.",
+        "done": True,
     })
-
-
-def _guess_input_value(label: str, task: str) -> str:
-    """Guess what to type based on the field label and task."""
-    label_lower = label.lower()
-
-    if "name" in label_lower:
-        return "Rahul Sharma"
-    if "email" in label_lower:
-        return "rahul@gmail.com"
-    if "phone" in label_lower:
-        return "+91 98765 43210"
-    if "date" in label_lower:
-        return "2026-09-02"
-    if "time" in label_lower:
-        return "morning"
-    if "department" in label_lower:
-        return "cardiology"
-    if "note" in label_lower or "comment" in label_lower:
-        return "Regular checkup"
-
-    return "test value"
