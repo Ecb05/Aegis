@@ -69,28 +69,31 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    // For EXECUTE_ACTION: async — send result via runtime.sendMessage
+    // For EXECUTE_ACTION: async — respond via sendResponse and keep the
+    // channel open so chrome.tabs.sendMessage resolves with the result.
     if (message.type === 'EXECUTE_ACTION') {
       const actionRequest = message.payload as ActionRequest;
-      executeAction(actionRequest).then(result => {
-        const response: HermesMessage = {
-          type: 'ACTION_RESULT',
-          payload: result,
-          source: 'content',
-          timestamp: Date.now(),
-        };
-        chrome.runtime.sendMessage(response).catch(() => {});
-      }).catch(err => {
-        const response: HermesMessage = {
-          type: 'ERROR',
-          payload: { message: String(err) },
-          source: 'content',
-          timestamp: Date.now(),
-        };
-        chrome.runtime.sendMessage(response).catch(() => {});
-      });
-      // Return false — we're not using sendResponse for async
-      return false;
+      executeAction(actionRequest)
+        .then(result => {
+          const response: HermesMessage = {
+            type: 'ACTION_RESULT',
+            payload: result,
+            source: 'content',
+            timestamp: Date.now(),
+          };
+          sendResponse(response);
+        })
+        .catch(err => {
+          const response: HermesMessage = {
+            type: 'ERROR',
+            payload: { message: String(err) },
+            source: 'content',
+            timestamp: Date.now(),
+          };
+          sendResponse(response);
+        });
+      // Keep the message channel open until the async action completes
+      return true;
     }
 
     return false;

@@ -52,25 +52,26 @@ function connectPort(): void {
   port.onMessage.addListener((message: any) => {
     console.log('[Hermes] Side panel received:', message.type);
 
+    // PAGE_STATE is the response to INSPECT_PAGE — always display it,
+    // then fall through so the pending request gets resolved.
     if (message.type === 'PAGE_STATE') {
       const state = message.payload as BrowserState;
       currentState = state;
       displayState(state);
-      return;
     }
 
     if (pendingResolve) {
       if (timeoutId) clearTimeout(timeoutId);
       const resolve = pendingResolve;
+      const rejectFn = pendingReject;
       pendingResolve = null;
       pendingReject = null;
 
       if (message.type === 'ERROR') {
-        reject(new Error(message.payload?.message || 'Unknown error'));
+        rejectFn?.(new Error(message.payload?.message || 'Unknown error'));
       } else {
         resolve(message);
       }
-      return;
     }
   });
 
@@ -966,6 +967,7 @@ async function runAutoLoop(): Promise<void> {
         action: action.action,
         target: action.target,
         error: execResult.error,
+        timestamp: execResult.timestamp || Date.now(),
       };
 
       if (execResult.success) {
@@ -975,7 +977,7 @@ async function runAutoLoop(): Promise<void> {
       }
     } catch (err) {
       addAutoLog(step + 1, 'error', `Execute failed: ${err instanceof Error ? err.message : String(err)}`);
-      lastActionResult = { success: false, action: action.action, target: action.target, error: String(err) };
+      lastActionResult = { success: false, action: action.action, target: action.target, error: String(err), timestamp: Date.now() };
     }
 
     if (!autoRunning) break;

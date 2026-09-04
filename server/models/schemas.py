@@ -79,7 +79,7 @@ class ActionResult(BaseModel):
     action: str
     target: Optional[str] = None
     error: Optional[str] = None
-    timestamp: int
+    timestamp: int = 0  # informational only — tolerate missing value
 
 
 # ─── Agent Step Schemas ────────────────────────────────────

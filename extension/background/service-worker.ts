@@ -377,13 +377,10 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     if (response) {
       port.postMessage(response);
     } else {
-      console.warn('[Hermes] Content script returned null/undefined response');
-      port.postMessage({
-        type: 'ERROR',
-        payload: { message: 'Content script returned empty response' },
-        source: 'background',
-        timestamp: Date.now(),
-      });
+      // MV3: an undefined response just means the content listener didn't
+      // call sendResponse (e.g. it handled the message asynchronously).
+      // Don't fabricate an error — some messages legitimately have no reply.
+      console.warn(`[Hermes] Content script returned no response for ${message.type}`);
     }
   } catch (err) {
     console.error('[Hermes] Send to content failed:', err);

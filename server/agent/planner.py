@@ -4,7 +4,9 @@ Builds prompts from sanitized state and calls the LLM to get the next action.
 Supports any OpenAI-compatible API (Ollama, OpenRouter, Groq, DeepSeek, OpenAI).
 """
 
+import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -18,6 +20,8 @@ from server.models.schemas import (
     Action,
     SanitizedElement,
 )
+
+logger = logging.getLogger("hermes.planner")
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -113,22 +117,50 @@ async def call_llm(system_prompt: str, user_prompt: str) -> str:
         "temperature": config.llm_temperature,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    # Keep the local model warm between loop steps (Ollama supports this;
+    # cloud providers ignore the extra field)
+    if config.llm_provider == "ollama" and config.llm_keep_alive:
+        payload["keep_alive"] = config.llm_keep_alive
 
-    # Extract content from OpenAI-compatible response
-    content = data["choices"][0]["message"]["content"]
+    # Generous per-phase timeouts. Connect is short; read/write must cover
+    # cold model load + token generation on local hardware.
+    timeout = httpx.Timeout(
+        connect=10.0,
+        read=config.llm_timeout,
+        write=config.llm_timeout,
+        pool=config.llm_timeout,
+    )
 
-    # Strip markdown code fences if present
-    content = content.strip()
-    if content.startswith("```"):
-        lines = content.split("\n")
-        # Remove first and last lines (```json and ```)
-        content = "\n".join(lines[1:-1])
+    last_err: Optional[Exception] = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
 
-    return content
+            # Extract content from OpenAI-compatible response
+            content = data["choices"][0]["message"]["content"]
+
+            # Strip markdown code fences if present
+            content = content.strip()
+            if content.startswith("```"):
+                lines = content.split("\n")
+                # Remove first and last lines (```json and ```)
+                content = "\n".join(lines[1:-1])
+
+            return content
+        except httpx.TimeoutException as e:
+            last_err = e
+            logger.warning(f"LLM request timed out (attempt {attempt + 1}/3): {e}")
+            if attempt < 2:
+                await asyncio.sleep(2 * (attempt + 1))
+
+    raise RuntimeError(
+        f"LLM request timed out after 3 attempts ({config.llm_timeout}s each). "
+        f"The model '{config.llm_model}' may still be loading — check `ollama list` "
+        f"and `ollama ps`. {last_err}"
+    )
 
 
 def parse_action_response(raw: str) -> dict:

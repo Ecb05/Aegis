@@ -4,6 +4,7 @@ HTTP endpoints for the extension to communicate with the server.
 """
 
 import logging
+import httpx
 from fastapi import APIRouter, HTTPException
 
 from server.config import get_config
@@ -77,6 +78,16 @@ async def agent_step(request: AgentStepRequest):
 
         response = await process_step(request)
         return response
+    except httpx.TimeoutException as e:
+        logger.error(f"Agent step failed (LLM timeout): {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "LLM timed out — the model is probably still loading or the page state "
+                "was too large. Try again in a moment (subsequent calls are faster once "
+                "the model is warm)."
+            ),
+        )
     except Exception as e:
         logger.error(f"Agent step failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent step failed: {str(e)}")

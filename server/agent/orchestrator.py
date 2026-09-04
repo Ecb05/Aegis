@@ -7,6 +7,7 @@ The extension handles execution and sends results back.
 import logging
 from typing import Optional
 
+from server.config import get_config
 from server.models.schemas import (
     AgentStepRequest,
     AgentStepResponse,
@@ -38,7 +39,7 @@ async def process_step(
     )
 
     # Check if we've exceeded max steps
-    if request.step >= 20:
+    if request.step >= get_config().max_steps:
         logger.warning(f"Max steps reached for session {session.session_id}")
         return AgentStepResponse(
             action={"action": "wait", "params": {"duration": 1000}},

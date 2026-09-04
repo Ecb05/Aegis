@@ -29,6 +29,8 @@ class Config:
     llm_model: str = "qwen2.5:7b"
     llm_max_tokens: int = 1024
     llm_temperature: float = 0.1  # Low temperature for structured output
+    llm_timeout: float = 300.0  # Seconds per LLM request (loading + generation)
+    llm_keep_alive: str = "30m"  # How long Ollama keeps the model loaded (ignored by cloud providers)
 
     # Agent
     max_steps: int = 20  # Max actions per task
@@ -84,6 +86,8 @@ def load_config() -> Config:
         llm_model=os.environ.get("LLM_MODEL", preset.get("llm_model", "")),
         llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "1024")),
         llm_temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1")),
+        llm_timeout=float(os.environ.get("LLM_TIMEOUT", "300")),
+        llm_keep_alive=os.environ.get("LLM_KEEP_ALIVE", "30m"),
         max_steps=int(os.environ.get("MAX_STEPS", "20")),
         require_confirmation=os.environ.get("REQUIRE_CONFIRMATION", "false").lower() == "true",
     )
