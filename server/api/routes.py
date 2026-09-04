@@ -88,6 +88,17 @@ async def agent_step(request: AgentStepRequest):
                 "the model is warm)."
             ),
         )
+    except ValueError as e:
+        # LLM output stayed unparseable even after the corrective retry inside
+        # the planner. No traceback dump — the user needs a readable message.
+        logger.error(f"Agent step failed (LLM output unparseable): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "The model returned output that could not be parsed as an action "
+                "(retried once). Please retry the task."
+            ),
+        )
     except Exception as e:
         logger.error(f"Agent step failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Agent step failed: {str(e)}")

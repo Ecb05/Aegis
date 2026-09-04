@@ -147,6 +147,15 @@ function getBoundingBox(el: HTMLElement): BoundingBox | undefined {
 }
 
 /**
+ * Check if an element is contenteditable
+ */
+function isContentEditable(el: HTMLElement): boolean {
+  return el.getAttribute('contenteditable') === 'true' ||
+         el.getAttribute('contenteditable') === '' ||
+         el.isContentEditable;
+}
+
+/**
  * Check if an element is visible
  */
 function isElementVisible(el: HTMLElement): boolean {
@@ -239,7 +248,21 @@ export function extractElements(): HermesElement[] {
     const attributes: Record<string, string> = {};
     const attrNames = ['type', 'name', 'href', 'src', 'alt', 'value', 'placeholder', 'role', 'aria-label', 'tabindex', 'contenteditable'];
     for (const attr of attrNames) {
-      const val = el.getAttribute(attr);
+      let val: string | null = el.getAttribute(attr);
+
+      // For inputs/textarea, the live `.value` property reflects what the user
+      // (or agent) typed, while `getAttribute('value')` only returns the initial
+      // HTML value. This is critical: after executing a `type` action, the
+      // re-inspected state MUST show the new value so the agent can verify the
+      // task actually happened. Default HTMLFormElement value is ''.
+      if (attr === 'value') {
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+          val = el.value;
+        } else if (isContentEditable(el)) {
+          val = el.textContent || null;
+        }
+      }
+
       if (val) attributes[attr] = val;
     }
 

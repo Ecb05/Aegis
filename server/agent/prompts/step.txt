@@ -5,6 +5,7 @@
 Step {step} of max {max_steps}
 
 ## Page Elements
+Showing {shown_elements} of {total_elements} total — hidden / non-interactive / off-task elements are filtered out. Only act on the ids listed below.
 {elements_json}
 
 ## Page Info
@@ -17,6 +18,15 @@ Step {step} of max {max_steps}
 - Passed: {passed} | Pseudonymized: {pseudonymized} | Redacted: {redacted} | Omitted: {omitted} | Protected: {protected}
 
 {last_action_section}
+
+## Completion Guidance
+- If the task names exactly one field (or one question) and the Last Action Result shows it was filled and verified, the task is DONE — respond with `"done": true`. Do not fill additional fields.
+- If you are filling a value the user supplied (email, name, number), only type text that appears in the task. NEVER invent structured data.
+- If the task asks you to ANSWER/WRITE something (e.g. "answer the question in 50 words"), you may compose the answer — but type it into the field whose label/question matches the task, never into email/phone/URL/ID fields. Respect the requested length.
+- Never type placeholders like `<PERSON_1>` or `[REDACTED_PHONE]` — their real values are hidden from you.
+- Never type into an element with `"status": "pre-filled"` or `"treatment": "protective_proxy"` unless the task explicitly asks to change that field.
+- After a single verified fill or a written answer, the task is complete: stop with `"done": true` instead of inventing more work.
+- If no further action clearly serves the task, set `"done": true` instead of guessing.
 
 ## Instructions
 Produce the NEXT SINGLE ACTION as JSON. Think step by step about what needs to happen to complete the task, then output ONE action.

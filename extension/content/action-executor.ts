@@ -117,10 +117,18 @@ function executeClick(target: HTMLElement): void {
   }
 }
 
+/** Read the current value of a textbox (input, textarea, or contenteditable). */
+function readElementValue(target: HTMLElement): string {
+  if (isContentEditable(target)) {
+    return target.textContent || '';
+  }
+  return (target as HTMLInputElement | HTMLTextAreaElement).value || '';
+}
+
 /**
  * Execute a type action — simulates real keystrokes so frameworks (React, WhatsApp) process them correctly
  */
-function executeType(target: HTMLElement, text: string): void {
+async function executeType(target: HTMLElement, text: string): Promise<void> {
   target.focus();
 
   // Clear existing content first
@@ -162,6 +170,9 @@ function executeType(target: HTMLElement, text: string): void {
       bubbles: true, cancelable: true,
     }));
   }
+
+  // Give the framework a tick to process the input events
+  await new Promise(resolve => setTimeout(resolve, 50));
 }
 
 /**
@@ -178,7 +189,7 @@ function executeScroll(params: { direction?: string; amount?: number }): void {
 /**
  * Execute a select action on a dropdown
  */
-function executeSelect(target: HTMLElement, value: string): void {
+async function executeSelect(target: HTMLElement, value: string): Promise<void> {
   const select = target as HTMLSelectElement;
   target.focus();
 
@@ -194,7 +205,11 @@ function executeSelect(target: HTMLElement, value: string): void {
   if (!isNaN(index) && index >= 0 && index < select.options.length) {
     select.selectedIndex = index;
     select.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
   }
+
+  // Nothing matched — report failure so verification can flag it
+  select.selectedIndex = -1;
 }
 
 /**
@@ -312,10 +327,10 @@ export async function executeAction(request: ActionRequest): Promise<ActionResul
         executeClick(element);
         break;
       case 'type':
-        executeType(element, (params as { text?: string })?.text || '');
+        await executeType(element, (params as { text?: string })?.text || '');
         break;
       case 'select':
-        executeSelect(element, (params as { value?: string })?.value || '');
+        await executeSelect(element, (params as { value?: string })?.value || '');
         break;
       case 'hover':
         executeHover(element);
@@ -329,8 +344,39 @@ export async function executeAction(request: ActionRequest): Promise<ActionResul
     }
 
     result.success = true;
+
+    // ─── Verification ──────────────────────────────
+    // Read back the DOM to confirm the action actually took effect.
+    // This is how the agent KNOWS whether the task was executed correctly.
+    if (action === 'type') {
+      const expected = (params as { text?: string })?.text || '';
+      const actual = readElementValue(element);
+      result.expectedValue = expected;
+      result.actualValue = actual;
+      result.verified = actual === expected;
+      if (!result.verified) {
+        result.success = false;
+        result.error = `Value mismatch: expected "${expected}" but field reads "${actual}"`;
+      }
+    } else if (action === 'select') {
+      const select = element as HTMLSelectElement;
+      const expected = (params as { value?: string })?.value || '';
+      const actual = select.value || '';
+      const actualText = select.selectedIndex >= 0 ? select.options[select.selectedIndex]?.textContent?.trim() || '' : '';
+      result.expectedValue = expected;
+      result.actualValue = actual || actualText;
+      result.verified = actual === expected || actualText === expected;
+      if (!result.verified) {
+        result.success = false;
+        result.error = `Selection mismatch: expected "${expected}" but field reads "${actualText}"`;
+      }
+    } else {
+      // click / press_key / scroll / wait / navigate — no DOM value to read back.
+      result.verified = true;
+    }
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);
+    result.verified = false;
   }
 
   return result;

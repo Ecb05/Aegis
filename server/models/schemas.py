@@ -80,6 +80,12 @@ class ActionResult(BaseModel):
     target: Optional[str] = None
     error: Optional[str] = None
     timestamp: int = 0  # informational only — tolerate missing value
+    # ─── Verification (agent confirms the task actually took effect) ───
+    verified: Optional[bool] = None      # true if DOM read-back matched
+    expected_value: Optional[str] = Field(None, alias="expectedValue")
+    actual_value: Optional[str] = Field(None, alias="actualValue")
+
+    model_config = {"populate_by_name": True}
 
 
 # ─── Agent Step Schemas ────────────────────────────────────

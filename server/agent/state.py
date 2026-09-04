@@ -56,6 +56,8 @@ class Session:
                     "action": result.action,
                     "target": result.target,
                     "error": result.error,
+                    "verified": result.verified,
+                    "actualValue": result.actual_value,
                 }
                 break
 

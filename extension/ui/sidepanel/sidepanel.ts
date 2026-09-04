@@ -777,6 +777,8 @@ const autoStopBtn = document.getElementById('auto-stop-btn') as HTMLButtonElemen
 const autoStepNum = document.getElementById('auto-step-num')!;
 const autoMaxSteps = document.getElementById('auto-max-steps') as HTMLInputElement;
 const autoLog = document.getElementById('auto-log')!;
+const autoVerifySummary = document.getElementById('auto-verify-summary')!;
+const autoVerifyList = document.getElementById('auto-verify-list')!;
 
 let autoRunning = false;
 let autoAbortController: AbortController | null = null;
@@ -784,7 +786,7 @@ let autoSessionId: string | null = null;
 
 function addAutoLog(
   step: number,
-  type: 'inspect' | 'sanitize' | 'plan' | 'execute' | 'done' | 'error',
+  type: 'inspect' | 'sanitize' | 'plan' | 'execute' | 'done' | 'error' | 'warn',
   text: string,
   reasoning?: string
 ): void {
@@ -799,6 +801,27 @@ function addAutoLog(
   `;
   autoLog.appendChild(entry);
   autoLog.scrollTop = autoLog.scrollHeight;
+}
+
+type VerifyStatus = 'verified' | 'unverified' | 'failed';
+
+/** Append one executed action + its verification outcome to the summary panel. */
+function addVerifyRow(step: number, action: string, target: string, status: VerifyStatus, detail: string): void {
+  autoVerifySummary.classList.remove('hidden');
+  const row = document.createElement('div');
+  row.className = `auto-verify-row status-${status}`;
+  const badge =
+    status === 'verified' ? '✅ Verified'
+    : status === 'unverified' ? '⚠️ Unverified'
+    : '❌ Failed';
+  row.innerHTML = `
+    <span class="auto-verify-step">${step}</span>
+    <span class="auto-verify-action">${escapeHtml(action)}${target ? ' → ' + escapeHtml(target) : ''}</span>
+    <span class="auto-verify-badge">${badge}</span>
+    <span class="auto-verify-detail">${escapeHtml(detail)}</span>
+  `;
+  autoVerifyList.appendChild(row);
+  autoVerifyList.scrollTop = autoVerifyList.scrollHeight;
 }
 
 function setAutoRunning(running: boolean): void {
@@ -820,6 +843,107 @@ async function autoSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Build a stable identity for an action (action + target + params). */
+function actionKey(action: any): string {
+  if (!action?.action) return '';
+  return `${action.action}:${action.target || ''}:${JSON.stringify(action.params || {})}`;
+}
+
+// ─── Type-action safety — mirror of the server veto in orchestrator.py ─────
+// Same classification on the client so a non-Ollama/mock server can't execute
+// a fabricated action either. Keep in sync with veto_unsafe_action().
+const DATA_FIELD_RE = /\b(e-?mail|mail|phone|mobile|telephone|roll\s*number|registration\s*number|(student|employee|id)\s*id|ssn|pincode|postal\s*code|zip|url|website|account\s*number|card\s*number|address|date\s*of\s*birth|dob)\b/i;
+const DATA_VALUE_RE = /^\+?[0-9][0-9\s()./_-]{6,}$/;
+const EMAIL_VALUE_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const URL_VALUE_RE = /^(https?:\/\/|www\.)/i;
+const GENERATIVE_VERB_RE = /\b(answer|respond|reply|write|draft|compose|describe|explain|summarize|express|elaborate|justify|introduce|tell|share|state|say)\b/i;
+const LENGTH_LIMIT_RE = /\b(in|of|within|under)\s+(about\s+)?\d+(\s*[-–]\s*\d+)?\s*(words?|characters?|chars?|sentences?|paragraphs?)\b/i;
+const QUESTION_LEAD_RE = /^(why|what|how|when|where|who|which)\b/i;
+const QUESTION_LABEL_RE = /[?？]|^(why|what|how|when|where|who|which)\b/i;
+const STOPWORDS = new Set(['with', 'that', 'this', 'from', 'your', 'into', 'have', 'been', 'would', 'could', 'should', 'about', 'there', 'their', 'what', 'when', 'where', 'which', 'while', 'them', 'then', 'than', 'they', 'were', 'was', 'just', 'but', 'want', 'need', 'please', 'tell', 'give', 'make', 'over', 'more', 'some', 'such', 'each', 'other', 'these', 'those', 'being', 'does']);
+
+function normText(s: string): string {
+  return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function meaningfulWords(s: string): Set<string> {
+  const out = new Set<string>();
+  const m = normText(s).match(/[a-z0-9][a-z0-9'’-]*/g) || [];
+  for (const raw of m) {
+    const w = raw.replace(/['’-]+/g, '');
+    if (w.length > 3 && !STOPWORDS.has(w)) out.add(w);
+  }
+  return out;
+}
+
+function setsIntersect(a: Set<string>, b: Set<string>): boolean {
+  for (const w of a) if (b.has(w)) return true;
+  return false;
+}
+
+/** True when the task asks the agent to author text rather than insert a value. */
+function isGenerativeTask(task: string): boolean {
+  const t = normText(task);
+  if (!t) return false;
+  if (LENGTH_LIMIT_RE.test(t)) return true;
+  if (QUESTION_LEAD_RE.test(t)) return true;
+  return GENERATIVE_VERB_RE.test(t);
+}
+
+/**
+ * Block reason for a `type` action, or '' when safe.
+ * Value tasks may only type text from the user's task; generative tasks
+ * ("answer the question… in 50 words") may type a composed answer, but only
+ * into the field that poses the question — never fabricated structured data,
+ * placeholders, data fields, or protected pre-filled fields.
+ */
+function typeActionBlockReason(action: any, task: string, elements: any[] | undefined): string {
+  const text = String(action?.params?.text ?? '').trim();
+  if (!text) return '';
+
+  const taskNorm = normText(task);
+  const textNorm = normText(text);
+  const isPlaceholder = /^<[A-Z][A-Z0-9_]*_\d+>$/.test(text) || /^\[REDACTED_[A-Z_]+\]$/.test(text);
+  const targetEl = Array.isArray(elements) ? elements.find((e) => e.id === action.target) : undefined;
+  const label = normText(targetEl?.label || '');
+  const labelWords = meaningfulWords(targetEl?.label || '');
+  const taskWords = meaningfulWords(task);
+  const labelMentioned = labelWords.size > 0 && taskWords.size > 0 && setsIntersect(labelWords, taskWords);
+  const protectedEl = targetEl?.status === 'pre-filled' || targetEl?.treatment === 'protective_proxy';
+  const dataField = !!label && DATA_FIELD_RE.test(label);
+  const dataLikeValue = DATA_VALUE_RE.test(text) || EMAIL_VALUE_RE.test(text) || URL_VALUE_RE.test(text);
+  const appearsInTask = !!taskNorm && !!textNorm && taskNorm.includes(textNorm);
+  const clip = text.length > 80 ? text.slice(0, 77) + '…' : text;
+  const targetLabel = targetEl?.label || action.target || 'a field';
+
+  if (isPlaceholder) {
+    return `Refusing to type placeholder '${text}' — its real value is hidden from the agent. Tell me the actual value to use.`;
+  }
+  if (appearsInTask) {
+    if (protectedEl && !labelMentioned) {
+      return `Refusing to type into '${targetLabel}' — it is pre-filled or protected and your task does not ask to change it.`;
+    }
+    return '';
+  }
+  if (dataField) {
+    return `Refusing to type '${clip}' into '${targetLabel}' — that is a data field (email/phone/ID/address/…) and the value must come from your task. Tell me the value to use.`;
+  }
+  if (dataLikeValue) {
+    return `Refusing to type '${clip}' — this looks like personal data (phone number, email, URL…) but does not appear in your task, so it would be invented. Tell me the value to use.`;
+  }
+  if (protectedEl && !labelMentioned) {
+    return `Refusing to type into '${targetLabel}' — it is pre-filled or protected and your task does not ask to change it.`;
+  }
+  if (!isGenerativeTask(task)) {
+    return `Refusing to type '${clip}' — this value does not appear in your task, so the agent would be inventing data.`;
+  }
+  const questionLabel = QUESTION_LABEL_RE.test(label);
+  if (questionLabel || (labelWords.size > 0 && taskWords.size > 0 && setsIntersect(labelWords, taskWords))) {
+    return '';
+  }
+  return `Refusing to type my own answer into '${targetLabel}' — I can't confirm that is the field your question refers to. Tell me which field to fill, or include the question text in your task.`;
+}
+
 async function runAutoLoop(): Promise<void> {
   const maxSteps = parseInt(autoMaxSteps.value, 10) || 10;
   const task = taskInput.value || 'General browsing';
@@ -827,6 +951,8 @@ async function runAutoLoop(): Promise<void> {
 
   setAutoRunning(true);
   autoLog.innerHTML = '';
+  autoVerifyList.innerHTML = '';
+  autoVerifySummary.classList.add('hidden');
   autoSessionId = null;
   autoStepNum.textContent = '0';
 
@@ -834,6 +960,9 @@ async function runAutoLoop(): Promise<void> {
 
   const serverUrl = 'http://localhost:8000';
   let lastActionResult: any = null;
+  let lastExecutedActionKey: string | null = null;
+  let lastExecutedSucceeded = false;
+  let verificationSummary = '';
 
   for (let step = 0; step < maxSteps && autoRunning; step++) {
     autoStepNum.textContent = String(step + 1);
@@ -893,6 +1022,7 @@ async function runAutoLoop(): Promise<void> {
 
     // ─── Step 3: Call Server ────────────────────
     addAutoLog(step + 1, 'plan', 'Calling server...');
+    const serverT0 = Date.now();
 
     let agentResult: any;
     try {
@@ -916,10 +1046,11 @@ async function runAutoLoop(): Promise<void> {
       autoSessionId = agentResult.sessionId;
       lastActionResult = null; // Reset for next step
 
+      const serverSec = ((Date.now() - serverT0) / 1000).toFixed(1);
       addAutoLog(
         step + 1,
         'plan',
-        `Action: ${agentResult.action?.action} → ${agentResult.action?.target || 'none'}`,
+        `Action: ${agentResult.action?.action} → ${agentResult.action?.target || 'none'}  (server ${serverSec}s)`,
         agentResult.reasoning
       );
 
@@ -938,8 +1069,26 @@ async function runAutoLoop(): Promise<void> {
 
     // Check if done
     if (agentResult.done) {
-      addAutoLog(step + 1, 'done', `✅ Task complete: ${agentResult.message || 'Done'}`);
-      setStatus('Task complete!', 'success');
+      const summary = verificationSummary ? ` 🔎${verificationSummary}` : '';
+      addAutoLog(step + 1, 'done', `✅ Task complete: ${agentResult.message || 'Done'}${summary}`);
+      setStatus('Task complete! Ready for next task', 'success');
+      // Hand off: clear the task box and focus it so the user can queue the
+      // next task — one task at a time, each verified before moving on.
+      taskInput.value = '';
+      taskInput.focus();
+      taskInput.placeholder = '✓ Done. What should I do next?';
+      break;
+    }
+
+    // Client-side repetition guard: if the server plan is the exact same action
+    // that already executed successfully, stop instead of re-executing it.
+    const nextActionKey = actionKey(agentResult.action);
+    if (lastExecutedActionKey && nextActionKey === lastExecutedActionKey && lastExecutedSucceeded) {
+      addAutoLog(step + 1, 'done', `✅ Task complete: ${agentResult.action?.action} on ${agentResult.action?.target || 'none'} already verified — not repeating`);
+      setStatus('Task complete! Ready for next task', 'success');
+      taskInput.value = '';
+      taskInput.focus();
+      taskInput.placeholder = '✓ Done. What should I do next?';
       break;
     }
 
@@ -950,6 +1099,24 @@ async function runAutoLoop(): Promise<void> {
     if (!action?.action) {
       addAutoLog(step + 1, 'error', 'No action returned from server');
       break;
+    }
+
+    // Pre-execution safety guard (mirrors the server veto in orchestrator.py):
+    // value tasks may only type text from the user's task; generative tasks
+    // ("answer the question…") may type a composed answer but only into the
+    // field that poses the question. Stops hallucinations even if the server
+    // guard misses.
+    if (action.action === 'type') {
+      const blockReason = typeActionBlockReason(action, task, sanitizedState?.elements);
+      if (blockReason) {
+        addAutoLog(step + 1, 'error', `🛑 Blocked: ${blockReason}`);
+        setStatus('Blocked unsafe action — task stopped', 'error');
+        taskInput.value = '';
+        taskInput.focus();
+        taskInput.placeholder = 'Blocked — what value should I use instead?';
+        autoRunning = false;
+        break;
+      }
     }
 
     addAutoLog(step + 1, 'execute', `Executing: ${action.action}${action.target ? ' → ' + action.target : ''}`);
@@ -968,16 +1135,45 @@ async function runAutoLoop(): Promise<void> {
         target: action.target,
         error: execResult.error,
         timestamp: execResult.timestamp || Date.now(),
+        verified: execResult.verified,
+        actualValue: execResult.actualValue,
+        expectedValue: execResult.expectedValue,
       };
 
       if (execResult.success) {
-        addAutoLog(step + 1, 'execute', `✅ ${action.action} succeeded`);
+        lastExecutedActionKey = nextActionKey;
+        lastExecutedSucceeded = true;
+        // Verification: the content script read the DOM back after the action.
+        if (execResult.verified) {
+          const actual = execResult.actualValue !== undefined
+            ? ` — now reads "${execResult.actualValue}"`
+            : '';
+          const hasReadback = execResult.actualValue !== undefined && execResult.actualValue !== null;
+          addAutoLog(step + 1, 'execute', `✅ ${action.action} succeeded & verified${actual}`);
+          verificationSummary = `${action.action} on ${action.target} verified ✓`;
+          addVerifyRow(
+            step + 1,
+            action.action,
+            action.target || '',
+            'verified',
+            hasReadback ? `now reads "${execResult.actualValue}"` : 'executed successfully (no value to read back)'
+          );
+        } else {
+          const why = execResult.error || 'no read-back match';
+          addAutoLog(step + 1, 'warn', `⚠️ ${action.action} ran but NOT verified: ${why}`);
+          verificationSummary = `${action.action} on ${action.target} ran but could NOT be verified ✗`;
+          addVerifyRow(step + 1, action.action, action.target || '', 'unverified', why);
+        }
       } else {
         addAutoLog(step + 1, 'error', `❌ ${action.action} failed: ${execResult.error}`);
+        lastExecutedSucceeded = false;
+        addVerifyRow(step + 1, action.action, action.target || '', 'failed', execResult.error || 'unknown error');
       }
     } catch (err) {
-      addAutoLog(step + 1, 'error', `Execute failed: ${err instanceof Error ? err.message : String(err)}`);
-      lastActionResult = { success: false, action: action.action, target: action.target, error: String(err), timestamp: Date.now() };
+      const why = err instanceof Error ? err.message : String(err);
+      addAutoLog(step + 1, 'error', `Execute failed: ${why}`);
+      lastActionResult = { success: false, action: action.action, target: action.target, error: why, timestamp: Date.now() };
+      addVerifyRow(step + 1, action.action, action.target || '', 'failed', why);
     }
 
     if (!autoRunning) break;
@@ -990,6 +1186,9 @@ async function runAutoLoop(): Promise<void> {
     // Loop finished naturally (max steps or done)
     const finalStep = parseInt(autoStepNum.textContent || '0', 10);
     addAutoLog(finalStep, 'done', 'Loop finished');
+    taskInput.value = '';
+    taskInput.focus();
+    taskInput.placeholder = 'What should I do next?';
   }
 
   setAutoRunning(false);

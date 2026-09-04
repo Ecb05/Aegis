@@ -12,9 +12,12 @@ Environment variables:
     LLM_MODEL=qwen2.5:7b
 """
 
+import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,6 +34,38 @@ logging.basicConfig(
 logger = logging.getLogger("hermes")
 
 
+# ─── Warm-up ────────────────────────────────────────────────
+
+async def _warm_model() -> None:
+    """Preload the local model so the user's FIRST task doesn't pay the cold-
+    load cost (which can be minutes on a 7B model). Fire-and-forget from the
+    lifespan: requests queue behind the load inside Ollama, and `keep_alive`
+    keeps the model resident afterwards.
+    """
+    config = get_config()
+    url = f"{config.llm_base_url.rstrip('/')}/chat/completions"
+    payload = {
+        "model": config.llm_model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+    }
+    if config.llm_keep_alive:
+        payload["keep_alive"] = config.llm_keep_alive
+    try:
+        t0 = time.monotonic()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(900.0)) as client:
+            resp = await client.post(url, json=payload)
+        if resp.status_code == 200:
+            logger.info(
+                f"Local model {config.llm_model} warm in {time.monotonic() - t0:.0f}s "
+                f"(kept alive for {config.llm_keep_alive})"
+            )
+        else:
+            logger.warning(f"Model warm-up returned HTTP {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"Model warm-up failed — first request will load it instead: {e}")
+
+
 # ─── Lifespan ───────────────────────────────────────────────
 
 @asynccontextmanager
@@ -42,8 +77,21 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Model: {config.llm_model}")
     logger.info(f"  Base URL: {config.llm_base_url}")
     logger.info(f"  Port: {config.port}")
-    yield
-    logger.info("Hermes server shutting down.")
+    logger.info(
+        f"  Elements shown to LLM per step: {config.llm_max_elements} "
+        f"(LLM_MAX_ELEMENTS), timeout: {config.llm_timeout}s (LLM_TIMEOUT)"
+    )
+
+    warmup_task = None
+    if config.llm_provider == "ollama":
+        logger.info("Warming local model in the background...")
+        warmup_task = asyncio.create_task(_warm_model())
+    try:
+        yield
+    finally:
+        if warmup_task is not None:
+            warmup_task.cancel()
+        logger.info("Hermes server shutting down.")
 
 
 # ─── App ────────────────────────────────────────────────────

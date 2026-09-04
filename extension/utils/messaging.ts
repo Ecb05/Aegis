@@ -142,6 +142,10 @@ export interface ActionResult {
   target?: string;
   error?: string;
   timestamp: number;
+  // ─── Verification (added: agent confirms the task actually took effect) ───
+  verified?: boolean;        // true if the DOM was read back and matches
+  expectedValue?: string;    // what was supposed to be set
+  actualValue?: string;      // what the DOM actually reads after the action
 }
 
 // Perception Types

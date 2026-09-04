@@ -31,6 +31,7 @@ class Config:
     llm_temperature: float = 0.1  # Low temperature for structured output
     llm_timeout: float = 300.0  # Seconds per LLM request (loading + generation)
     llm_keep_alive: str = "30m"  # How long Ollama keeps the model loaded (ignored by cloud providers)
+    llm_max_elements: int = 45  # Cap on elements shown to the LLM per step (heavy pages are trimmed)
 
     # Agent
     max_steps: int = 20  # Max actions per task
@@ -88,6 +89,7 @@ def load_config() -> Config:
         llm_temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1")),
         llm_timeout=float(os.environ.get("LLM_TIMEOUT", "300")),
         llm_keep_alive=os.environ.get("LLM_KEEP_ALIVE", "30m"),
+        llm_max_elements=int(os.environ.get("LLM_MAX_ELEMENTS", "45")),
         max_steps=int(os.environ.get("MAX_STEPS", "20")),
         require_confirmation=os.environ.get("REQUIRE_CONFIRMATION", "false").lower() == "true",
     )
