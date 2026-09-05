@@ -73,7 +73,9 @@ async def agent_step(request: AgentStepRequest):
         for el in request.sanitized_state.elements:
             value_str = f" value=\"{el.value}\"" if el.value else ""
             status_str = f" status=\"{el.status}\"" if el.status else ""
-            logger.info(f"    {el.id:12s} role={el.role:10s} label=\"{el.label}\" sensitivity={el.sensitivity} treatment={el.treatment}{value_str}{status_str}")
+            ctx_str = f" context=\"{el.context}\"" if el.context else ""
+            amb_str = " AMBIGUOUS" if el.ambiguous else ""
+            logger.info(f"    {el.id:12s} role={el.role:10s} label=\"{el.label}\" sensitivity={el.sensitivity} treatment={el.treatment}{ctx_str}{value_str}{status_str}{amb_str}")
         logger.info("=".ljust(60))
 
         response = await process_step(request)

@@ -14,7 +14,7 @@ import type {
 import { runDetectionCascade, runDetectionCascadeOnAll } from './detection-cascade';
 import { classifySensitivity, classifySensitivityAll, getSensitivitySummary } from './sensitivity';
 import { assessTaskRelevance, assessTaskRelevanceAll } from './task-relevance';
-import { redactAll } from './redactor';
+import { redactAll, sanitizeElementContext } from './redactor';
 import { resetPseudonymMap, getPseudonymMap } from './pseudonym-map';
 import { getCurrentMode, type PrivacyMode } from './policy';
 
@@ -80,6 +80,15 @@ export function runPrivacyPipeline(
   }));
 
   const { sanitized, stats } = redactAll(redactInputs, effectiveMode);
+
+  // Sanitize context anchors (card titles etc. attached during DOM enrichment):
+  // they pass through the same detection cascade as values, so a person's name
+  // or an email used as a card anchor is never transmitted raw.
+  for (const el of sanitized) {
+    if (el.context) {
+      el.context = sanitizeElementContext(el.context, effectiveMode) || undefined;
+    }
+  }
 
   // Build sanitized state
   const sanitizedState: SanitizedState = {

@@ -14,8 +14,10 @@ interface PIIRegex {
 /**
  * PII regex patterns, ordered by specificity (most specific first).
  * Each pattern matches a specific data type in element values or labels.
+ * Exported so the CV output gate (cv-output-gate.ts) enforces the exact same
+ * policy on OCR/perception output text.
  */
-const PII_PATTERNS: PIIRegex[] = [
+export const PII_PATTERNS: PIIRegex[] = [
   // Credit card numbers (16 digits, optional separators)
   {
     pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/,

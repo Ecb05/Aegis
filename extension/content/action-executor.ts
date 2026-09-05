@@ -2,6 +2,59 @@
 // Executes structured actions on browser elements using native events
 
 import type { ActionRequest, ActionResult, ActionType } from '../utils/messaging';
+import { getRegistryEntry } from './element-registry';
+
+/** Center-to-center distance between a recorded bbox and a live element. */
+function bboxCenterDistance(a: { x: number; y: number; width: number; height: number }, el: HTMLElement): number {
+  const r = el.getBoundingClientRect();
+  const ax = a.x + a.width / 2;
+  const ay = a.y + a.height / 2;
+  const bx = r.x + r.width / 2;
+  const by = r.y + r.height / 2;
+  return Math.abs(ax - bx) + Math.abs(ay - by);
+}
+
+/** Collect all live elements matching a role prefix (incl. shadow DOM). */
+function collectCandidatesForRole(rolePrefix: string): HTMLElement[] {
+  const candidates: HTMLElement[] = [];
+
+  const tagMap: Record<string, string> = {
+    button: 'button, input[type="button"], input[type="submit"]',
+    input: 'input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]), textarea',
+    select: 'select',
+    link: 'a',
+    form: 'form',
+    checkbox: 'input[type="checkbox"]',
+    radio: 'input[type="radio"]',
+    img: 'img',
+    heading: 'h1, h2, h3, h4, h5, h6',
+  };
+
+  const collectDeep = (root: ParentNode) => {
+    if (tagMap[rolePrefix]) {
+      root.querySelectorAll(tagMap[rolePrefix]).forEach(el => {
+        candidates.push(el as HTMLElement);
+      });
+    }
+
+    // For textbox role, also find contenteditable elements
+    if (rolePrefix === 'input' || rolePrefix === 'textbox') {
+      root.querySelectorAll('[contenteditable="true"], [contenteditable=""]').forEach(el => {
+        candidates.push(el as HTMLElement);
+      });
+    }
+
+    // Recurse into shadow roots
+    for (const child of Array.from(root.children)) {
+      if (child instanceof HTMLElement && child.shadowRoot) {
+        collectDeep(child.shadowRoot);
+      }
+    }
+  };
+
+  collectDeep(document.body);
+  return candidates;
+}
 
 /**
  * Recursively find an element by data-hermes-id, including shadow DOM
@@ -25,60 +78,58 @@ function findElementDeep(root: ParentNode, hermesId: string): HTMLElement | null
 }
 
 /**
- * Find a DOM element by Hermes element ID
+ * Find a DOM element by Hermes element ID.
+ *
+ * Strategy 1: query by the data-hermes-id attribute (set during extraction).
+ * Strategy 2: the id is gone (SPA re-render / hover overlay mounted new nodes) —
+ *   consult the registry of what this id WAS at inspect time (label, context,
+ *   bbox) and re-find the closest match by location. We deliberately do NOT
+ *   fall back to "index N of this role" blindly: on grid pages every play
+ *   button is identical, so index 0 is always the wrong movie's button.
+ * Strategy 3 (last resort): ids never registered (direct injection) keep the
+ *   legacy role+index behaviour.
  */
 function findElementByHermesId(hermesId: string): HTMLElement | null {
   // Strategy 1: query by data-hermes-id attribute (set during extraction)
   const el = findElementDeep(document.body, hermesId);
   if (el) return el;
 
-  // Strategy 2: fallback by role + index pattern
+  // Strategy 2 + 3: role + index pattern
   const match = hermesId.match(/^(\w+)_(\d+)$/);
   if (!match) return null;
 
   const [, rolePrefix, indexStr] = match;
   const index = parseInt(indexStr, 10);
+  const candidates = collectCandidatesForRole(rolePrefix);
+  if (candidates.length === 0) return null;
 
-  // Build a list of all elements matching this role prefix
-  const candidates: HTMLElement[] = [];
-
-  const collectDeep = (root: ParentNode) => {
-    // Standard tags
-    const tagMap: Record<string, string> = {
-      button: 'button, input[type="button"], input[type="submit"]',
-      input: 'input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]), textarea',
-      select: 'select',
-      link: 'a',
-      form: 'form',
-      checkbox: 'input[type="checkbox"]',
-      radio: 'input[type="radio"]',
-      img: 'img',
-      heading: 'h1, h2, h3, h4, h5, h6',
-    };
-
-    if (tagMap[rolePrefix]) {
-      root.querySelectorAll(tagMap[rolePrefix]).forEach(el => {
-        candidates.push(el as HTMLElement);
-      });
-    }
-
-    // For textbox role, also find contenteditable elements
-    if (rolePrefix === 'input' || rolePrefix === 'textbox') {
-      root.querySelectorAll('[contenteditable="true"], [contenteditable=""]').forEach(el => {
-        candidates.push(el as HTMLElement);
-      });
-    }
-
-    // Recurse into shadow roots
-    for (const child of Array.from(root.children)) {
-      if (child instanceof HTMLElement && child.shadowRoot) {
-        collectDeep(child.shadowRoot);
+  const entry = getRegistryEntry(hermesId);
+  if (entry) {
+    if (entry.bbox) {
+      // Re-find by location: pick the candidate nearest to where the element
+      // was at inspect time.
+      let best: HTMLElement | null = null;
+      let bestDist = Infinity;
+      for (const cand of candidates) {
+        const d = bboxCenterDistance(entry.bbox, cand);
+        if (d < bestDist) {
+          bestDist = d;
+          best = cand;
+        }
       }
+      // Sanity bound: if the layout moved drastically (element far from where
+      // it was recorded), don't gamble — fail so the loop re-inspects.
+      const scale = Math.max(entry.bbox.width, entry.bbox.height);
+      const maxDist = Math.max(600, scale * 6);
+      if (best && bestDist <= maxDist) return best;
+      return null;
     }
-  };
+    if (index >= 0 && index < candidates.length) return candidates[index];
+    if (candidates.length === 1) return candidates[0];
+    return null;
+  }
 
-  collectDeep(document.body);
-
+  // Strategy 3: legacy fallback for ids the registry has never seen.
   if (index >= 0 && index < candidates.length) {
     return candidates[index];
   }
@@ -318,7 +369,10 @@ export async function executeAction(request: ActionRequest): Promise<ActionResul
 
     const element = findElementByHermesId(hermesId);
     if (!element) {
-      result.error = `Element not found: ${hermesId}. Try re-inspecting the page.`;
+      result.error =
+        `Element not found: ${hermesId}. The page changed after inspection ` +
+        '(hover overlays, lazy loads or a re-render can move or recreate elements) ' +
+        '— re-inspect the page and retry.';
       return result;
     }
 

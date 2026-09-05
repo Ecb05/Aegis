@@ -1,6 +1,8 @@
 // Hermes Content Script
 
 import { extractElements, getPageInfo } from './dom-parser';
+import { enrichWithContext } from './context-enricher';
+import { registerElements } from './element-registry';
 import { executeAction } from './action-executor';
 import type { BrowserState, HermesMessage, ActionRequest } from '../utils/messaging';
 
@@ -13,6 +15,13 @@ function buildBrowserState(): BrowserState {
 
   const elements = extractElements();
   const pageInfo = getPageInfo();
+
+  // Stage A: disambiguate duplicated controls with the context of the card /
+  // content group they belong to (Netflix "play" buttons → which movie).
+  enrichWithContext(elements);
+  // Remember what each element was so actions can still find it after an SPA
+  // re-render drops its id stamp — without falling back to "first one wins".
+  registerElements(elements);
 
   currentState = {
     page: pageInfo,

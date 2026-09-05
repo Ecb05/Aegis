@@ -8,6 +8,7 @@
 
 import { pipeline, env } from "@huggingface/transformers";
 import { createWorker, type Worker } from "tesseract.js";
+import { sanitizeCVBlocks, sanitizeCVFullText } from "../privacy/cv-output-gate";
 
 // ─── UNIFIED TRANSFORMERS.JS & ORT CONFIGURATION ─────────────
 
@@ -168,7 +169,7 @@ async function ocrImage(imageData: string): Promise<any> {
     const { data } = await ocrWorker.recognize(url);
     URL.revokeObjectURL(url);
 
-    const textBlocks = data.lines.map((line: any) => ({
+    const rawBlocks = data.lines.map((line: any) => ({
       text: line.text.trim(),
       confidence: line.confidence / 100,
       bbox: {
@@ -179,10 +180,25 @@ async function ocrImage(imageData: string): Promise<any> {
       },
     }));
 
+    // ─── CV OUTPUT PRIVACY GATE ─────────────────────────────
+    // OCR reads free text off pixels — emails, phones, IDs can appear in
+    // page text and artwork. Mask sensitive spans BEFORE the result can be
+    // stored, logged, or transmitted anywhere. Raw OCR never leaves this
+    // function.
+    const { blocks: textBlocks, redactedCount, redactionTypes } =
+      sanitizeCVBlocks(rawBlocks);
+    const fullText = sanitizeCVFullText(data.text).text;
+
+    if (redactedCount > 0) {
+      console.log(
+        `[Hermes Offscreen] Privacy gate: masked PII in ${redactedCount}/${textBlocks.length} OCR blocks (${redactionTypes.join(", ")})`,
+      );
+    }
+
     console.log("[Hermes Offscreen] OCR found", textBlocks.length, "text blocks");
     return {
       type: "ocr",
-      fullText: data.text,
+      fullText,
       textBlocks,
       confidence: data.confidence / 100,
     };

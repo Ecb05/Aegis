@@ -123,7 +123,7 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
     console.error('[Hermes] No active tab available');
     port.postMessage({
       type: 'ERROR',
-      payload: { message: 'No active tab — navigate to a page first, then click the Hermes icon' },
+      payload: { message: 'No active tab — navigate to a page first, then click the Aegis icon' },
       source: 'background',
       timestamp: Date.now(),
     });
@@ -324,7 +324,7 @@ async function handleFromSidePanel(message: any, port: chrome.runtime.Port) {
   if (!tabId) {
     port.postMessage({
       type: 'ERROR',
-      payload: { message: 'No active tab — click the Hermes icon on a tab first' },
+      payload: { message: 'No active tab — click the Aegis icon on a tab first' },
       source: 'background',
       timestamp: Date.now(),
     });

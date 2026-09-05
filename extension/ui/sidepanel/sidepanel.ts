@@ -251,9 +251,13 @@ function populateElementList(elements: HermesElement[]): void {
     const sources = (el as any).sources?.join('+') || '';
     const iou = el.attributes?.iou ? ` IoU:${el.attributes.iou}` : '';
 
+    const context = (el as any).context;
+    const ambiguous = (el as any).ambiguous;
     item.innerHTML = `
       <span class="element-badge ${badgeClass}">${el.role}</span>
       <span class="element-label">${escapeHtml(el.label)}</span>
+      ${context ? `<span class="element-ctx" title="content group">↳ ${escapeHtml(context)}</span>` : ''}
+      ${ambiguous ? `<span class="element-amb" title="duplicated control — could not be disambiguated">ambiguous</span>` : ''}
       ${sources ? `<span class="element-id" style="color:#64b5f6">${sources}</span>` : ''}
       ${iou ? `<span class="element-id" style="color:#66bb6a">${iou}</span>` : ''}
       <span class="element-id">${el.id}</span>
@@ -306,7 +310,10 @@ function populateTargetSelect(elements: HermesElement[]): void {
   for (const el of elements) {
     const option = document.createElement('option');
     option.value = el.id;
-    option.textContent = `${el.id} (${el.label})`;
+    const ctx = (el as any).context;
+    option.textContent = ctx
+      ? `${el.id} (${el.label} — ${ctx})`
+      : `${el.id} (${el.label})`;
     targetSelect.appendChild(option);
   }
 }

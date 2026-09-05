@@ -195,6 +195,28 @@ body {
   color: #8a8d91;
 }
 
+.element-ctx {
+  font-size: 11px;
+  color: #66bb6a;
+  background: rgba(102, 187, 106, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+
+.element-amb {
+  font-size: 10px;
+  color: #ffb74d;
+  border: 1px solid rgba(255, 183, 77, 0.4);
+  padding: 0 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
 /* Action Controls */
 .action-controls {
   margin-top: 12px;

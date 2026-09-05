@@ -8,6 +8,11 @@ Step {step} of max {max_steps}
 Showing {shown_elements} of {total_elements} total — hidden / non-interactive / off-task elements are filtered out. Only act on the ids listed below.
 {elements_json}
 
+## Element Contexts
+Some elements carry a `context` field — the title/identity of the card or content group they belong to (e.g. two different movie cards both have a `label` of "play", but their `context` says which movie each play belongs to). To target the right one, match the task's words against `context`, NOT by counting buttons in page order.
+
+{ambiguity_note}
+
 ## Page Info
 - Title: {page_title}
 - URL: {page_url}
@@ -27,6 +32,8 @@ Showing {shown_elements} of {total_elements} total — hidden / non-interactive 
 - Never type into an element with `"status": "pre-filled"` or `"treatment": "protective_proxy"` unless the task explicitly asks to change that field.
 - After a single verified fill or a written answer, the task is complete: stop with `"done": true` instead of inventing more work.
 - If no further action clearly serves the task, set `"done": true` instead of guessing.
+- Use `context` to disambiguate: when several identical controls exist (same role + label), pick the one whose `context` matches the task (movie/show/item name). Never assume the first one in the list is the right one.
+- If the Ambiguity Warning lists ids that are truly indistinguishable, never guess between them — navigate via the item's unique titled link/card first, or ask the user.
 
 ## Instructions
 Produce the NEXT SINGLE ACTION as JSON. Think step by step about what needs to happen to complete the task, then output ONE action.

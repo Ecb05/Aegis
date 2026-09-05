@@ -10,6 +10,7 @@ import type {
   OCRResult,
   DetectedElement,
 } from "../utils/messaging";
+import { sanitizeCVText } from "../privacy/cv-output-gate";
 
 export interface PipelineResult {
   browserState: BrowserState;
@@ -160,6 +161,21 @@ export function fuseWithOCR(
 ): HermesElement[] {
   if (!ocrBlocks || ocrBlocks.length === 0) return elements;
 
+  // ─── CV OUTPUT PRIVACY GATE (defense in depth) ───────────
+  // The offscreen document already masks OCR output at the source, but
+  // fuseWithOCR is public API — any caller handing it raw OCR blocks must
+  // still get the same protection. Sanitize each block's text here so PII
+  // can never become an element label or the ocr_text attribute. Idempotent:
+  // already-masked blocks ([REDACTED_X]) contain no PII patterns.
+  const safeBlocks = ocrBlocks.map((block) => {
+    const result = sanitizeCVText(block.text);
+    return {
+      block: { ...block, text: result.text },
+      redacted: result.redacted,
+      types: result.redactions.map((r) => r.dataType),
+    };
+  });
+
   const matchedOCR = new Set<number>();
 
   return elements.map((el) => {
@@ -168,9 +184,9 @@ export function fuseWithOCR(
     let bestIoU = 0;
     let bestOCRIdx = -1;
 
-    for (let i = 0; i < ocrBlocks.length; i++) {
+    for (let i = 0; i < safeBlocks.length; i++) {
       if (matchedOCR.has(i)) continue;
-      const block = ocrBlocks[i];
+      const block = safeBlocks[i].block;
       const iou = calculateIoU(el.bbox, block.bbox);
 
       if (iou > bestIoU) {
@@ -181,7 +197,8 @@ export function fuseWithOCR(
 
     if (bestIoU >= 0.3 && bestOCRIdx >= 0) {
       matchedOCR.add(bestOCRIdx);
-      const block = ocrBlocks[bestOCRIdx];
+      const matched = safeBlocks[bestOCRIdx];
+      const block = matched.block;
       return {
         ...el,
         attributes: {
@@ -189,8 +206,11 @@ export function fuseWithOCR(
           ocr_text: block.text,
           ocr_confidence: String(block.confidence.toFixed(3)),
           ocr_iou: String(bestIoU.toFixed(3)),
+          // Mark elements whose OCR context carried PII (masked in place) —
+          // visible in logs/demos as proof the CV channel is gated.
+          ...(matched.redacted ? { ocr_redacted: matched.types.join(",") } : {}),
         },
-        // Use OCR text as label if it's more specific
+        // Use OCR text as label if it's more specific (sanitized — masks only)
         label: block.text.length > el.label.length ? block.text : el.label,
       };
     }

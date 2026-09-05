@@ -36,6 +36,12 @@ class SanitizedElement(BaseModel):
     status: Optional[str] = None  # pre-filled, empty, user-provided
     visible: Optional[bool] = None
     bbox: Optional[BoundingBox] = None
+    # Context disambiguation: the card/group this element belongs to
+    # (e.g. the movie title under a duplicated "play" button). Sanitized
+    # client-side — may be a pseudonym token.
+    context: Optional[str] = None
+    # True when (role + label) is duplicated and no context disambiguated it.
+    ambiguous: Optional[bool] = None
 
     model_config = {"populate_by_name": True}
 

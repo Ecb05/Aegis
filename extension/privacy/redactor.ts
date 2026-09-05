@@ -12,6 +12,8 @@ import type {
   Treatment,
 } from '../utils/messaging';
 import { getPseudonymMap } from './pseudonym-map';
+import { runDetectionCascade } from './detection-cascade';
+import { getSensitivityLevel } from './taxonomy';
 
 // ─── Quadrant Model ─────────────────────────────────────────
 
@@ -147,7 +149,54 @@ export function redactElement(
     status,
     visible: element.visible,
     bbox: element.bbox,
+    // Context disambiguation metadata passes through — the context STRING
+    // itself is sanitized separately (see sanitizeElementContext).
+    context: element.context,
+    ambiguous: element.ambiguous,
   };
+}
+
+/**
+ * Sanitize a context anchor string before it leaves the client.
+ *
+ * Context text (e.g. a card title) is usually public — a product name, a
+ * headline. But a card can also be anchored by personal content (a person's
+ * name on a social feed, an email in a contact card). Run the same detection
+ * cascade used for element values: low-sensitivity context passes through,
+ * anything sensitive is pseudonymized (distinct tokens per distinct value, so
+ * the disambiguation still works) or redacted under strict/local-only modes.
+ */
+export function sanitizeElementContext(
+  context: string,
+  mode: 'standard' | 'strict' | 'local-only' = 'standard',
+): string | undefined {
+  if (!context) return undefined;
+
+  const synthetic: HermesElement = {
+    id: 'context',
+    role: 'text',
+    label: context,
+    tag: 'div',
+    visible: true,
+    sensitive: false,
+    attributes: { value: context },
+  };
+  const detection = runDetectionCascade(synthetic);
+  const level = getSensitivityLevel(detection.dataType);
+
+  if (level < 2) return context;
+
+  if (mode === 'local-only') return undefined; // strictest: drop it
+
+  const token = getPseudonymMap().tokenize(context, detection.dataType);
+  if (token !== context) return token;
+
+  // Type has no token prefix (password/pin/…-style types never get tokens):
+  // fall back to a redaction placeholder instead of leaking the value.
+  if (mode === 'standard' || level < 4) {
+    return `[REDACTED_${detection.dataType.toUpperCase()}]`;
+  }
+  return undefined;
 }
 
 /**

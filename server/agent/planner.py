@@ -60,8 +60,10 @@ def trim_elements_for_llm(
     Heavy pages (chat sites, marketplaces) can expose 100+ elements; feeding all
     of them to a local model makes every step slow and unfocused. Scoring:
     interactive fields first, visible ones next, then how strongly the label
-    overlaps the task. Hidden or non-interactive noise is dropped, and anything
-    the task clearly names is always kept.
+    OR the context anchor overlaps the task ("play" + context "Inception"
+    keeps the Inception button even though the raw label is generic). Hidden or
+    non-interactive noise is dropped, and anything the task clearly names is
+    always kept.
     """
     if limit <= 0 or len(elements) <= limit:
         return list(elements)
@@ -70,7 +72,7 @@ def trim_elements_for_llm(
 
     def score(el: SanitizedElement) -> tuple:
         role = (el.role or "").lower()
-        label = _label_words(el.label)
+        label = _label_words(el.label) | _label_words(el.context)
         overlap = label & task_words
 
         s = 0.0
@@ -121,6 +123,12 @@ def format_element_for_llm(el: SanitizedElement) -> dict:
         result["status"] = el.status
     if el.original_data_type:
         result["dataType"] = el.original_data_type
+    # Context disambiguation: which card/group this element belongs to
+    # ("play" buttons under different movie titles become distinguishable).
+    if el.context:
+        result["context"] = el.context
+    if el.ambiguous:
+        result["ambiguous"] = True
     return result
 
 
@@ -145,6 +153,23 @@ def build_step_prompt(
     # Format elements
     elements = [format_element_for_llm(el) for el in shown]
     elements_json = json.dumps(elements, indent=2)
+
+    # Ambiguity warning: duplicated controls that could not be disambiguated.
+    # The LLM must not guess blindly between them — better to ask.
+    ambiguous_ids = [el.id for el in shown if el.ambiguous]
+    if ambiguous_ids:
+        ambiguity_note = (
+            "## Ambiguity Warning\n"
+            "These elements share the same role, label AND context — they are "
+            "indistinguishable from the page structure alone:\n"
+            + ", ".join(ambiguous_ids)
+            + "\nIf your next action must target one of them, do NOT guess. "
+            "Plan the action that disambiguates first (e.g. navigate to the item "
+            "via its unique titled link/card, then act on the single control "
+            "there) or set `\"done\": true` and ask the user which one they mean.\n"
+        )
+    else:
+        ambiguity_note = ""
 
     # Build last action section
     last_action_section = ""
@@ -171,6 +196,7 @@ Your previous action is shown above. If it succeeded (success: true), DO NOT pla
         omitted=request.sanitized_state.stats.get("omitted", 0),
         protected=request.sanitized_state.stats.get("protected", 0),
         last_action_section=last_action_section,
+        ambiguity_note=ambiguity_note,
     )
 
     return prompt

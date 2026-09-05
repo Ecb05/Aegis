@@ -97,6 +97,13 @@ export interface HermesElement {
   attributes: Record<string, string>;
   confidence?: number;
   sources?: ('dom' | 'vision')[];
+  // ─── Context disambiguation (which content group / card this belongs to) ───
+  /** Descriptive anchor of the content group this element belongs to (e.g. the movie title a duplicate "play" button lives under). */
+  context?: string;
+  /** Confidence in the extracted context anchor (0..1). */
+  contextConfidence?: number;
+  /** True when (role + label) is duplicated on the page AND no context could disambiguate it — the agent should not guess blindly. */
+  ambiguous?: boolean;
 }
 
 export type ElementRole =
@@ -292,6 +299,11 @@ export interface SanitizedElement {
   status?: 'pre-filled' | 'empty' | 'user-provided'; // for protective proxy
   visible?: boolean;
   bbox?: BoundingBox;
+  // ─── Context disambiguation ──────────────────────────────────
+  /** Disambiguating context, sanitized like a label (may be a pseudonym token). */
+  context?: string;
+  /** True when duplicates could not be disambiguated. */
+  ambiguous?: boolean;
 }
 
 /** Complete sanitized state sent to the server */
